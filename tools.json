@@ -1,0 +1,22 @@
+{
+  "home": {
+    "name": "Adel Tools",
+    "description": "Home",
+    "icon": "fas fa-home"
+  },
+  "bsp": {
+    "name": "BSP Inspector",
+    "description": "Shows metadata about a BSP file. Can be used to extract packed files.",
+    "icon": "fas fa-layer-group"
+  },
+  "mdl": {
+    "name": "MDL Inspector",
+    "description": "Shows data about a MDL file. Can convert to GLTF and OBJ model formats.",
+    "icon": "fas fa-cube"
+  },
+  "wall": {
+    "name": "Wall Generator",
+    "description": "Generates walls with random tile placement.",
+    "icon": "fas fa-border-all"
+  }
+}
