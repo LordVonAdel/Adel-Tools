@@ -5884,7 +5884,10 @@ window.Struct = require('structron');
 window.JSZip = require('jszip');
 
 window.onload = async function() {
-  const toolId = location.href.split("=")[1] || "Home";
+  let toolId = location.href.split("=")[1];
+
+  if (!toolId) toolId = "home";
+
   const toolIndexQuery = await fetch("./tools.json");
   window.toolIndex = await toolIndexQuery.json();
 

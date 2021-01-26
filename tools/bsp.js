@@ -46,16 +46,23 @@ class BspTool extends Tool {
     this.hideError();
     this.showSpinner();
 
-    this.buffer = await this.bufferFromFileInput(this.fileInput);
-
     try {
+      this.buffer = await this.bufferFromFileInput(this.fileInput);
+      let mapname = this.fileInput.files[0].name;
+
       this.bspData = bspScheme.read(this.buffer, 0);
       this.bspData.cubemaps = this.readCubemaps();
       this.bspData.textures = this.readTextures();
       this.bspData.entities = this.readEntities();
+      
+      this.fileTable.innerHTML = "";
+      this.addDownloadableFile(mapname + ".zip", this.extractLumpBuffer(40), {
+        title: "Download all as zip",
+        parent: this.fileTable
+      });
 
       let files = await this.readPakfile();
-      this.fileTable.innerHTML = "";
+
       let fileNum = 0;
       for (let k in files) {
         let file = files[k];
