@@ -12,7 +12,8 @@ class BspTool extends Tool {
 
     this.fileInput = this.addInput({
       label: "BSP File",
-      type: "file"
+      type: "file",
+      accept: ["bsp"]
     });
 
     this.fileInput.addEventListener("change", () => {
@@ -48,7 +49,9 @@ class BspTool extends Tool {
 
     try {
       this.buffer = await this.bufferFromFileInput(this.fileInput);
-      let mapname = this.fileInput.files[0].name;
+
+      let mapname = this.getFileFromFileInput(this.fileInput).name;
+      mapname = mapname.substr(0, mapname.length - 4);
 
       this.bspData = bspScheme.read(this.buffer, 0);
       this.bspData.cubemaps = this.readCubemaps();

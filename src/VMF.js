@@ -3,6 +3,8 @@
  * https://developer.valvesoftware.com/wiki/Valve_Map_Format
  */
 
+Tool.loadScript("./src/Vector.js");
+
 let nextVMFId = 2; // sides and solids with same id can exists
 
 class VMFClass {
@@ -51,10 +53,10 @@ class VMFSide extends VMFClass {
 
     let dir1 = Vector.subtract(p1, p2);
     let dir2 = Vector.subtract(p3, p2);
-    let normal = Vector.normalize(Vector.crossProduct(dir1, dir2));
+    this.normal = Vector.normalize(Vector.crossProduct(dir1, dir2));
 
     this.u = Vector.normalize(dir1);
-    this.v = Vector.normalize(dir2);
+    this.v = Vector.scale(Vector.normalize(dir2), -1);
 
     this.setTexture(0, 0, 0.25);
     this.setProperty("id", nextVMFId++);

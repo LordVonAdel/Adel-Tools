@@ -13,6 +13,31 @@ class Tool {
     this.errorPanel = this.addTag("div", {
       classes: ["error", "hidden"]
     });
+
+    this.fileDrops = {};
+
+    document.body.ondrop = (e) => {
+      e.preventDefault();
+
+      for (let file of e.dataTransfer.files) {
+        let extension = file.name.split(".").pop().toUpperCase();
+        if (extension in this.fileDrops) {
+          let uploadInput = this.fileDrops[extension] 
+          uploadInput.type = "text";
+          uploadInput.disabled = true;
+          uploadInput.value = file.name;
+          uploadInput._file = file;
+
+          let changeEvent = new Event("change");
+          uploadInput.dispatchEvent(changeEvent);
+        }
+      }
+      
+    }
+
+    document.body.ondragover = (e) => {
+      e.preventDefault();
+    }
   }
 
   addInput(options) {
@@ -42,6 +67,13 @@ class Tool {
 
     if ("value" in options) {
       input.value = options.value;
+    }
+
+    if ("accept" in options) {
+      input.setAttribute("accept", options.accept.map(ext => "." + ext).join(","));
+      for (let extension of options.accept) {
+        this.fileDrops[extension.toUpperCase()] = input;
+      }
     }
 
     this.dom.appendChild(div);
@@ -277,22 +309,57 @@ class Tool {
 
   addInfo(text) {
     this.addTag("div", {
-      html: `<i class="fas fa-info-circle"></i> ` + text,
+      html: `<i class="fas fa-info-circle"></i>` + text,
       classes: ["info"]
     })
   }
 
+  getFileFromFileInput(input) {
+    if (input.type == "file") return input.files[0];
+    if ("_file" in input) return input._file;
+    return null;
+  }
+
+  isFileInputFilled(input) {
+    return this.getFileFromFileInput(input) != null;
+  }
+
   bufferFromFileInput(input) {
     return new Promise(resolve => {
+      let file;
+
+      if (input.type == "file") {
+        file = input.files[0]
+      } else {
+        file = input._file;
+      }
+
       const fileReader = new FileReader();
       fileReader.addEventListener("load", function() {
         resolve(Buffer.from(fileReader.result));
       });
-      fileReader.readAsArrayBuffer(input.files[0]);
+      fileReader.readAsArrayBuffer(file);
     });
   }
 
   static nextInputId = 0;
+
+  static loadedScripts = [];
+
+  static async loadScript(path) {
+    return new Promise(resolve => {
+
+      if (Tool.loadedScripts.includes(path)) return resolve();
+      Tool.loadedScripts.push(path);
+
+      let script = document.createElement("script");
+      script.src = path;
+      document.head.appendChild(script);
+      script.onload = function() {
+        resolve();
+      }
+    });
+  }
 
 }
 

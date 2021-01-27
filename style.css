@@ -54,7 +54,7 @@ footer, header, main {
   color: white;
   width: 100%;
   padding: 0.5em;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(16px);
 }
 
 footer {
@@ -67,6 +67,7 @@ main {
   margin: auto;
   margin-bottom: 1em;
   padding: 1em;
+  border-radius: 1em;
 }
 
 header {
@@ -122,6 +123,10 @@ h2 {
   background: #20d2ff80;
   padding: 1em;
   margin-bottom: 1em;
+}
+
+.info .fas {
+  margin-right: 0.5em;
 }
 
 .radio, button, .file-download, .block-link {

@@ -21,10 +21,6 @@ window.onload = async function() {
 
   document.getElementById("title").innerText = "Adel Tools - " + window.toolIndex[toolId].name;
 
-  let script = document.createElement("script");
-  script.src = "./tools/" + toolId + ".js";
-  document.head.appendChild(script);
-  script.onload = function() {
-    document.getElementById("spinner").classList.add("hidden");
-  }
+  await Tool.loadScript("./tools/" + toolId + ".js");
+  document.getElementById("spinner").classList.add("hidden");
 }

@@ -33,6 +33,14 @@ class Vector {
     ]
   }
 
+  static scale(vector, factor) {
+    return [
+      vector[0] * factor,
+      vector[1] * factor,
+      vector[2] * factor
+    ]
+  }
+
 }
 
 window.Vector = Vector;

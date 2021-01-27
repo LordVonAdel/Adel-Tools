@@ -230,4 +230,9 @@ class WallTool extends Tool {
 
 }
 
-new WallTool();
+(async function() {
+  await Tool.loadScript("./src/Vector.js");
+  await Tool.loadScript("./src/VMF.js");
+
+  new WallTool();
+})();
