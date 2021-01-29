@@ -93,6 +93,11 @@ class WallTool extends Tool {
       }
     });
 
+    let btnGenerate = this.addTag("button", {
+      text: "Regenerate"
+    });
+    btnGenerate.addEventListener("click", () => this.generate());
+
     this.inputThick = this.addInput({
       label: "Wall thickness",
       type: "number",
@@ -101,14 +106,14 @@ class WallTool extends Tool {
     });
     this.inputThick.addEventListener("change", () => this.generate());
 
-    this.addInfo("The generated vmf file has some texture alignment issues! (Maybe I will fix it in the future)");
-
     this.download = null;
 
     this.generate();
   }
 
   generate() {
+    const textureSize = 1024;
+
     this.hideError();
     let w = this.inputWidth.value;
     let h = this.inputHeight.value;
@@ -125,10 +130,12 @@ class WallTool extends Tool {
       this.showError("Please give a positive width!");
       return;
     }
+
     if (h < 0) {
       this.showError("Please give a positive height!");
       return;
     }
+
     if (t < 0) {
       this.showError("Please give a positive wall thickness!");
       return;
@@ -138,6 +145,7 @@ class WallTool extends Tool {
       this.showError("Width is not divisible by " + smallestUnit + "!");
       return;
     }
+    
     if (h % smallestUnit != 0) {
       this.showError("Height is not divisible by " + smallestUnit + "!");
       return;
@@ -155,7 +163,7 @@ class WallTool extends Tool {
       }
     }
 
-    let sizes = this.inputSizes.value.sort();
+    let sizes = this.inputSizes.value.sort((a,b)=>a-b).reverse();
     for (let size of sizes) {
       let units = size / smallestUnit;
       let tries = gridArea / (units*units) * 3;
@@ -195,7 +203,7 @@ class WallTool extends Tool {
       for (let x = 0; x < gridWidth; x++) {
         let cell = grid[y][x];
         if (cell == -1) continue;
-        ctx.strokeRect(x * 32, y * 32, cell, cell);
+        ctx.strokeRect(x * smallestUnit, y * smallestUnit, cell, cell);
       }
     }
 
@@ -207,14 +215,14 @@ class WallTool extends Tool {
     for (let z = 0; z < gridHeight; z++) {
       for (let x = 0; x < gridWidth; x++) {
         let cell = grid[z][x];
-        let h = z * smallestUnit;
+        let h = (gridHeight - z) * smallestUnit;
         if (cell == -1) continue;
 
-        let solid = vmf.createSolid(x * smallestUnit, 0, h, x * smallestUnit + cell, y, h + cell);
+        let solid = vmf.createSolid(x * smallestUnit, 0, h - cell, x * smallestUnit + cell, y, h);
         solid.setMaterial("south", style[cell]);
 
         let u = (Math.round(-x*smallestUnit*4 / cell) * cell);
-        let v = (Math.round((y+cell)*smallestUnit*4 / cell) * cell);
+        let v = (Math.round(-z*smallestUnit*4 / cell) * cell);
         solid.sides["south"].setTexture(u, v, 0.25);
       }
     }

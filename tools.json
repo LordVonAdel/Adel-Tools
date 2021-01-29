@@ -18,5 +18,15 @@
     "name": "Wall Generator",
     "description": "Generates walls with random tile placement.",
     "icon": "fas fa-border-all"
+  },
+  "screen": {
+    "name": "Interactive Screen Designer",
+    "description": "Generates an interactive screen.",
+    "icon": "fas fa-desktop"
+  },
+  "vtf": {
+    "name": "VTF Converter",
+    "description": "Convert image files to VTF.",
+    "icon": "fas fa-images"
   }
 }

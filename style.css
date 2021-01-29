@@ -91,7 +91,7 @@ label {
   display: block;
 }
 
-input {
+select, input {
   display: block;
   width: 100%;
   border: 1px solid white;
@@ -101,7 +101,7 @@ input {
   margin-bottom: 1em;
 }
 
-input:focus {
+select:focus, input:focus {
   border: 1px solid var(--secondary);
 }
 

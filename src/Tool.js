@@ -51,9 +51,11 @@ class Tool {
     label.setAttribute("for", inputId);
     div.appendChild(label);
 
-    let input = document.createElement("input");
+    let input = document.createElement(options.type == "select" ? "select" : "input");
     input.id = inputId;
-    input.type = options.type;
+    if (options.type != "select") {
+      input.type = options.type;
+    }
     div.appendChild(input);
 
     if ("append" in options) {
@@ -73,6 +75,18 @@ class Tool {
       input.setAttribute("accept", options.accept.map(ext => "." + ext).join(","));
       for (let extension of options.accept) {
         this.fileDrops[extension.toUpperCase()] = input;
+      }
+    }
+
+    if ("options" in options) {
+      for (let option of options.options) {
+        this.addTag("option", {
+          parent: input,
+          text: option.text,
+          attributes: {
+            value: option.value
+          }
+        });
       }
     }
 
@@ -113,6 +127,14 @@ class Tool {
       for (let cls of options.classes) {
         tag.classList.add(cls);
       }
+    }
+
+    if ("onclick" in options) {
+      tag.addEventListener("click", options.onclick);
+    }
+
+    if ("onchange" in options) {
+      tag.addEventListener("change", options.onchange);
     }
 
     return tag;
@@ -320,25 +342,60 @@ class Tool {
     return null;
   }
 
+  getFilesFromFileInput(input) {
+    if (input.type == "file") return input.files;
+    if ("_files" in input) return input._files;
+    return [];
+  }
+
   isFileInputFilled(input) {
     return this.getFileFromFileInput(input) != null;
   }
 
   bufferFromFileInput(input) {
     return new Promise(resolve => {
-      let file;
-
-      if (input.type == "file") {
-        file = input.files[0]
-      } else {
-        file = input._file;
-      }
-
+      let file = this.getFileFromFileInput(input);
       const fileReader = new FileReader();
       fileReader.addEventListener("load", function() {
-        resolve(Buffer.from(fileReader.result));
+        resolve(new Buffer(fileReader.result));
       });
       fileReader.readAsArrayBuffer(file);
+    });
+  }
+
+  imageFromFile(file) {
+    return new Promise(resolveImage => {
+      const fileReader = new FileReader();
+      fileReader.addEventListener("load", async () => {
+        let result = fileReader.result;
+        let img = new Image();
+        
+        await new Promise(resolve => {
+          img.onload = resolve;
+          img.src = result;
+        });
+
+        resolveImage(img);
+      });
+      fileReader.readAsDataURL(file);
+    });
+  }
+
+  imageFromFileInput(input) {
+    return new Promise(async resolve => {
+      let file = this.getFileFromFileInput(input);
+      return await this.imageFromFile(file);
+    });
+  }
+
+  imagesFromFileInput(input) {
+    let files = this.getFilesFromFileInput(input);
+    return new Promise(async resolve => {
+      let images = [];
+      for (let file of files) {
+        images.push(await this.imageFromFile(file));
+      }
+      resolve(images);
     });
   }
 
