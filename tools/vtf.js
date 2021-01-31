@@ -1,3 +1,5 @@
+import VTF from "./../src/VTF.js";
+
 class VTFTool extends Tool {
 
   constructor() {
@@ -7,6 +9,7 @@ class VTFTool extends Tool {
 
     let formats = [];
     for (let format in VTF.Formats) {
+      if (format == "none") continue;
       formats.push(format);
     }
 
@@ -36,12 +39,16 @@ class VTFTool extends Tool {
       }
     });
 
-    let fileDownload = null;
+    this.fileDownload = null;
     this.images = [];
+    this.exportName = "texture.vtf";
   }
 
   async import() {
     if (!this.isFileInputFilled(this.inputImage)) return;
+
+    let firstFile = this.getFileFromFileInput(this.inputImage);
+    this.exportName = firstFile.name.split(".")[0] + ".vtf";
 
     let images = await this.imagesFromFileInput(this.inputImage);
     let image = images[0];
@@ -66,7 +73,7 @@ class VTFTool extends Tool {
       let vtf = new VTF(VTF.Formats[this.inputFormat.value]);
       vtf.createHighResResource(this.images);
       let fileData = vtf.generate();
-      this.fileDownload = this.addDownloadableFile("texture.vtf", fileData, {});
+      this.fileDownload = this.addDownloadableFile(this.exportName, fileData, {});
     } catch (e) {
       this.showError(e.message);
     } finally {
@@ -76,8 +83,4 @@ class VTFTool extends Tool {
 
 }
 
-(async () => {
-  await Tool.loadScript("./src/DXT.js");
-  await Tool.loadScript("./src/VTF.js");
-  new VTFTool();
-})();
+new VTFTool();

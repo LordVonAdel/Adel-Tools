@@ -179,7 +179,8 @@ class Tool {
 
       div.addEventListener("click", () => {
         selectValue(item.value);
-        obj.onchange();
+        if (obj.onchange)
+          obj.onchange();
       });
 
       if (item.image) {
@@ -247,7 +248,8 @@ class Tool {
           obj.value.push(item.value);
           div.classList.add("active");
         }
-        obj.onchange();
+        if (obj.onchange)
+          obj.onchange();
       });
 
       if (obj.value.includes(item.value)) {
@@ -323,6 +325,7 @@ class Tool {
   showError(message) {
     this.errorPanel.classList.remove("hidden");
     this.errorPanel.innerText = message;
+    window.scrollTo(0, 0);
   }
 
   hideError() {
@@ -411,6 +414,7 @@ class Tool {
 
       let script = document.createElement("script");
       script.src = path;
+      script.type = "module";
       document.head.appendChild(script);
       script.onload = function() {
         resolve();

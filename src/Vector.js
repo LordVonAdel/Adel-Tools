@@ -1,8 +1,7 @@
 /**
  * Works with 3 element arrays
  */
-
-class Vector {
+export default class Vector {
 
   static normalize(v) {
     let len = Vector.length(v);
@@ -42,5 +41,3 @@ class Vector {
   }
 
 }
-
-window.Vector = Vector;

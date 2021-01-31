@@ -1,3 +1,5 @@
+import VMF from "./../src/VMF.js";
+
 const WallStyles = {
   black_clean: {
     32: "METAL/BLACK_WALL_METAL_002B",
@@ -70,8 +72,7 @@ class WallTool extends Tool {
         {value: "white_clean", text: "White Clean", image: "./img/wall_types/white_clean.jpg"},
         {value: "white_dirty", text: "White Dirty", image: "./img/wall_types/white_dirty.jpg"}
       ],
-      value: "black_clean",
-      onchange: () => this.generate()
+      value: "black_clean"
     });
 
     this.inputSizes = this.addMultiSelect({
@@ -238,9 +239,4 @@ class WallTool extends Tool {
 
 }
 
-(async function() {
-  await Tool.loadScript("./src/Vector.js");
-  await Tool.loadScript("./src/VMF.js");
-
-  new WallTool();
-})();
+new WallTool();

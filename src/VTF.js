@@ -11,7 +11,7 @@
 /**
  * Generate VTF 7.2 files
  */
-class VTF {
+export default class VTF {
 
   constructor(format) {
     this.resources = [];
@@ -110,7 +110,11 @@ class VTF {
   createHighResResource(images) {
 
     if (images.length == 0) {
-      throw new Error("At least one frame must be given.");
+      throw new Error("A texture needs at least 1 frame.");
+    }
+
+    if (images.length > 0xFFFF) {
+      throw new Error("Exceeding frame maximum of 65535.");
     }
 
     let i0 = images[0];
@@ -247,6 +251,30 @@ class VTF {
         return buffer;
       },
       flags: 0
+    },
+    BGRA5551: {
+      value: 21,
+      encode(imageData) {
+        let pixels = imageData.data;
+        let buffer = Buffer.alloc(pixels.length / 2);
+        for (let i = 0; i < pixels.length / 4; i++) {
+          let r = pixels[i * 4];
+          let g = pixels[i * 4 + 1];
+          let b = pixels[i * 4 + 2];
+          let a = pixels[i * 4 + 3];
+
+          let r5 = ((r >> 3) & 0x1f);
+          let g5 = ((g >> 3) & 0x1f);
+          let b5 = ((b >> 3) & 0x1f);
+          let a1 = (a > 128) & 1;
+
+          let col = (b5 << 11) | (g5 << 6) | (r5 << 1) | a1;
+          buffer[i * 2] = (col >> 8) & 0xff;
+          buffer[i * 2 + 1] = col & 0xff;
+        }
+        return buffer;
+      },
+      flags: VTF.Flags.OneBitAlpha
     },
     /*DXT1: {
       value: 13,
