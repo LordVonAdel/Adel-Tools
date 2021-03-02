@@ -27,6 +27,7 @@ class Tool {
           uploadInput.disabled = true;
           uploadInput.value = file.name;
           uploadInput._file = file;
+          uploadInput._files.push(file);
 
           let changeEvent = new Event("change");
           uploadInput.dispatchEvent(changeEvent);
@@ -56,6 +57,12 @@ class Tool {
     if (options.type != "select") {
       input.type = options.type;
     }
+
+    if (options.type == "file") {
+      input._files = [];
+      input._file = null;
+    }
+
     div.appendChild(input);
 
     if ("append" in options) {
@@ -387,7 +394,7 @@ class Tool {
   imageFromFileInput(input) {
     return new Promise(async resolve => {
       let file = this.getFileFromFileInput(input);
-      return await this.imageFromFile(file);
+      resolve(await this.imageFromFile(file));
     });
   }
 
