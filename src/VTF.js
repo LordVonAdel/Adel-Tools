@@ -8,6 +8,8 @@
  * @todo Generate thumbnail/lowres
  */
 
+import DXT from "./DXT.js";
+
 /**
  * Generate VTF 7.2 files
  */
@@ -24,18 +26,19 @@ export default class VTF {
     this.firstFrame = 0;
 
     this.highResImageFormat = format;
-    this.lowResImageFormat = VTF.Formats.none;
+    this.lowResImageFormat = VTF.Formats.DXT1;
     this.mipmapCount = 0;
 
-    this.lowResImageWidth = 255;
-    this.lowResImageHeight = 255;
+    this.lowResImageWidth = 16;
+    this.lowResImageHeight = 16;
     this.lowResImageData = null;
 
     this.bumbmapScale = 1;
   }
 
   generateHeader() {
-    let headerSize = 0x50;
+    //let headerSize = 0x50;
+    let headerSize = 80;
     let buffer = Buffer.alloc(headerSize);
 
     // Signature
@@ -57,9 +60,9 @@ export default class VTF {
     buffer.writeInt32LE(0, 28);
 
     // Reflectivity
-    buffer.writeFloatLE(0, 32);
-    buffer.writeFloatLE(0, 36);
-    buffer.writeFloatLE(0, 40);
+    buffer.writeFloatLE(1, 32);
+    buffer.writeFloatLE(1, 36);
+    buffer.writeFloatLE(1, 40);
 
     // Padding
     buffer.writeInt32LE(0, 44);
@@ -68,12 +71,14 @@ export default class VTF {
     buffer.writeUInt32LE(this.highResImageFormat.value, 52);
     buffer.writeUInt8(this.mipmapCount, 56);
 
+    // 3 Byte Padding
+
     // lowResImageFormat
     buffer.writeUInt32LE(this.lowResImageFormat.value, 57);
 
     // low res image size
-    buffer.writeUInt8(0, 61);
-    buffer.writeUInt8(0, 62);
+    buffer.writeUInt8(this.lowResImageWidth, 61);
+    buffer.writeUInt8(this.lowResImageHeight, 62);
 
     // depth
     buffer.writeUInt16LE(1, 63);
@@ -182,113 +187,112 @@ export default class VTF {
       data: Buffer.concat(mipmaps)
     });
   }
+}
 
-  static Flags = {
-    PointSampling: 0x0001,
-    TrilinearSampling: 0x0002,
-    ClampS: 0x0004,
-    ClampT: 0x0008,
-    AnisotropicSampling: 0x0010,
-    HintDXT5: 0x0020,
-    PWLCorrected: 0x0040,
-    NormalMap: 0x0080,
-    NoMipmaps: 0x0100,
-    NoLevelOfDetail: 0x0200,
-    NoMinimumMipmap: 0x0400,
-    Procedural: 0x0800,
-    OneBitAlpha: 0x1000,
-    EightBitAlpha: 0x2000,
-    EnvironmentMap: 0x4000,
-    RenderTarget: 0x8000,
-    DepthRenderTarget: 0x10000,
-    ClampU: 0x2000000,
-    VertexTexture: 0x4000000,
-    SSBump: 0x8000000,
-    Border: 0x20000000
-  }
+VTF.Flags = {
+  PointSampling: 0x0001,
+  TrilinearSampling: 0x0002,
+  ClampS: 0x0004,
+  ClampT: 0x0008,
+  AnisotropicSampling: 0x0010,
+  HintDXT5: 0x0020,
+  PWLCorrected: 0x0040,
+  NormalMap: 0x0080,
+  NoMipmaps: 0x0100,
+  NoLevelOfDetail: 0x0200,
+  NoMinimumMipmap: 0x0400,
+  Procedural: 0x0800,
+  OneBitAlpha: 0x1000,
+  EightBitAlpha: 0x2000,
+  EnvironmentMap: 0x4000,
+  RenderTarget: 0x8000,
+  DepthRenderTarget: 0x10000,
+  ClampU: 0x2000000,
+  VertexTexture: 0x4000000,
+  SSBump: 0x8000000,
+  Border: 0x20000000
+}
 
-  static Formats = {
-    RGB888: {
-      value: 2,
-      encode(imageData) {
-        let pixels = imageData.data;
-        let buffer = Buffer.alloc(pixels.length * (3 / 4));
-        for (let i = 0; i < pixels.length / 4; i++) {
-          buffer[i * 3] = pixels[i * 4];
-          buffer[i * 3 + 1] = pixels[i * 4 + 1];
-          buffer[i * 3 + 2] = pixels[i * 4 + 2];
-        }
-        return buffer;
-      },
-      flags: 0
-    },
-    RGBA8888: {
-      value: 0,
-      encode(imageData) {
-        let pixels = imageData.data;
-        return Buffer.from(pixels);
-      },
-      flags: VTF.Flags.EightBitAlpha
-    },
-    RGB565: {
-      value: 4,
-      encode(imageData) {
-        let pixels = imageData.data;
-        let buffer = Buffer.alloc(pixels.length / 2);
-        for (let i = 0; i < pixels.length / 4; i++) {
-          let r = pixels[i * 4];
-          let g = pixels[i * 4 + 1];
-          let b = pixels[i * 4 + 2];
-
-          let r5 = ((r >> 3) & 0x1f);
-          let g6 = ((g >> 2) & 0x3f);
-          let b5 = ((b >> 3) & 0x1f);
-
-          let col = (r5 << 11) | (g6 << 5) | b5;
-          buffer[i * 2] = (col >> 8) & 0xff;
-          buffer[i * 2 + 1] = col & 0xff;
-        }
-        return buffer;
-      },
-      flags: 0
-    },
-    BGRA5551: {
-      value: 21,
-      encode(imageData) {
-        let pixels = imageData.data;
-        let buffer = Buffer.alloc(pixels.length / 2);
-        for (let i = 0; i < pixels.length / 4; i++) {
-          let r = pixels[i * 4];
-          let g = pixels[i * 4 + 1];
-          let b = pixels[i * 4 + 2];
-          let a = pixels[i * 4 + 3];
-
-          let r5 = ((r >> 3) & 0x1f);
-          let g5 = ((g >> 3) & 0x1f);
-          let b5 = ((b >> 3) & 0x1f);
-          let a1 = (a > 128) & 1;
-
-          let col = (b5 << 11) | (g5 << 6) | (r5 << 1) | a1;
-          buffer[i * 2] = (col >> 8) & 0xff;
-          buffer[i * 2 + 1] = col & 0xff;
-        }
-        return buffer;
-      },
-      flags: VTF.Flags.OneBitAlpha
-    },
-    /*DXT1: {
-      value: 13,
-      encode(imageData) {
-        return DXT.DXT1.compress(imageData.width, imageData.height, imageData.data);
-      },
-      flags: 0
-    },*/
-    none: {
-      value: 0xFFFFFFFF,
-      encode() {
-        return Buffer.alloc(0);
+VTF.Formats = {
+  RGB888: {
+    value: 2,
+    encode(imageData) {
+      let pixels = imageData.data;
+      let buffer = Buffer.alloc(pixels.length * (3 / 4));
+      for (let i = 0; i < pixels.length / 4; i++) {
+        buffer[i * 3] = pixels[i * 4];
+        buffer[i * 3 + 1] = pixels[i * 4 + 1];
+        buffer[i * 3 + 2] = pixels[i * 4 + 2];
       }
+      return buffer;
+    },
+    flags: 0
+  },
+  RGBA8888: {
+    value: 0,
+    encode(imageData) {
+      let pixels = imageData.data;
+      return Buffer.from(pixels);
+    },
+    flags: VTF.Flags.EightBitAlpha
+  },
+  RGB565: {
+    value: 4,
+    encode(imageData) {
+      let pixels = imageData.data;
+      let buffer = Buffer.alloc(pixels.length / 2);
+      for (let i = 0; i < pixels.length / 4; i++) {
+        let r = pixels[i * 4];
+        let g = pixels[i * 4 + 1];
+        let b = pixels[i * 4 + 2];
+
+        let r5 = ((r >> 3) & 0x1f);
+        let g6 = ((g >> 2) & 0x3f);
+        let b5 = ((b >> 3) & 0x1f);
+
+        let col = (r5 << 11) | (g6 << 5) | b5;
+        buffer[i * 2] = (col >> 8) & 0xff;
+        buffer[i * 2 + 1] = col & 0xff;
+      }
+      return buffer;
+    },
+    flags: 0
+  },
+  BGRA5551: {
+    value: 21,
+    encode(imageData) {
+      let pixels = imageData.data;
+      let buffer = Buffer.alloc(pixels.length / 2);
+      for (let i = 0; i < pixels.length / 4; i++) {
+        let r = pixels[i * 4];
+        let g = pixels[i * 4 + 1];
+        let b = pixels[i * 4 + 2];
+        let a = pixels[i * 4 + 3];
+
+        let r5 = ((r >> 3) & 0x1f);
+        let g5 = ((g >> 3) & 0x1f);
+        let b5 = ((b >> 3) & 0x1f);
+        let a1 = (a > 128) & 1;
+
+        let col = (b5 << 11) | (g5 << 6) | (r5 << 1) | a1;
+        buffer[i * 2] = (col >> 8) & 0xff;
+        buffer[i * 2 + 1] = col & 0xff;
+      }
+      return buffer;
+    },
+    flags: VTF.Flags.OneBitAlpha
+  },
+  DXT1: {
+    value: 13,
+    encode(imageData) {
+      return DXT.DXT1.compress(imageData.width, imageData.height, imageData.data);
+    },
+    flags: 0
+  },
+  none: {
+    value: 0xFFFFFFFF,
+    encode() {
+      return Buffer.alloc(0);
     }
   }
-
 }
