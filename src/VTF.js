@@ -3,9 +3,7 @@
  */
 
 /**
- * @todo Calculate reflectivity
- * @todo Implement DXT1/DXT3/DXT5
- * @todo Generate thumbnail/lowres
+ * @todo Implement DXT3/DXT5
  */
 
 import DXT from "./DXT.js";
@@ -70,8 +68,6 @@ export default class VTF {
     buffer.writeFloatLE(this.bumbmapScale, 48);
     buffer.writeUInt32LE(this.highResImageFormat.value, 52);
     buffer.writeUInt8(this.mipmapCount, 56);
-
-    // 3 Byte Padding
 
     // lowResImageFormat
     buffer.writeUInt32LE(this.lowResImageFormat.value, 57);
@@ -250,9 +246,9 @@ VTF.Formats = {
         let g6 = ((g >> 2) & 0x3f);
         let b5 = ((b >> 3) & 0x1f);
 
-        let col = (r5 << 11) | (g6 << 5) | b5;
-        buffer[i * 2] = (col >> 8) & 0xff;
-        buffer[i * 2 + 1] = col & 0xff;
+        let col = (b5 << 11) | (g6 << 5) | (r5);
+        buffer[i * 2] = (col >> 0) & 0xff;
+        buffer[i * 2 + 1] = (col >> 8) & 0xff;
       }
       return buffer;
     },
@@ -274,9 +270,9 @@ VTF.Formats = {
         let b5 = ((b >> 3) & 0x1f);
         let a1 = (a > 128) & 1;
 
-        let col = (b5 << 11) | (g5 << 6) | (r5 << 1) | a1;
-        buffer[i * 2] = (col >> 8) & 0xff;
-        buffer[i * 2 + 1] = col & 0xff;
+        let col = (r5 << 10) | (g5 << 5) | (b5 << 0) | (a1 << 15);
+        buffer[i * 2] = (col >> 0) & 0xff;
+        buffer[i * 2 + 1] = (col >> 8) & 0xff;
       }
       return buffer;
     },

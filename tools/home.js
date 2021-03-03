@@ -12,14 +12,14 @@ class WallTool extends Tool {
 
     this.addTag("p").innerHTML = "This page is hosted on GitHub. Check out the <a href='https://github.com/LordVonAdel/Adel-Tools'>repository</a>";
 
-    this.addTag("h3", {text: "Inspectors"});
+    //this.addTag("h3", {text: "Inspectors"});
     this.addToolLink("bsp");
     
-    this.addTag("h3", {text: "Converters"});
+    //this.addTag("h3", {text: "Converters"});
     this.addToolLink("mdl");
     this.addToolLink("vtf");
 
-    this.addTag("h3", {text: "Generators"});
+    //this.addTag("h3", {text: "Generators"});
     this.addToolLink("wall");
     //this.addToolLink("screen");
   }

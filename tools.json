@@ -28,5 +28,10 @@
     "name": "VTF Converter",
     "description": "Convert image files to VTF.",
     "icon": "fas fa-images"
+  },
+  "vmt": {
+    "name": "VMT Editor",
+    "description": "A node editor to edit VMT files.",
+    "icon": "fas fa-bowling-ball"
   }
 }

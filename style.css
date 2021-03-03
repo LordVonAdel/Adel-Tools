@@ -223,3 +223,66 @@ button:hover, .file-download:hover, .block-link:hover {
     transform: rotate(360deg);
   }
 }
+
+.node-editor {
+  background: #101010;
+  position: relative;
+  overflow: scroll;
+}
+
+.node-editor-node {
+  position: absolute;
+  border: 1px solid var(--secondary);
+  border-radius: 0.5em;
+}
+
+.node-editor-node-title {
+  width: 100%;
+  height: 24px;
+  border-bottom: 1px solid var(--secondary);
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 0.5em;
+}
+
+.node-editor-inputs {
+  margin-right: 1em;
+}
+
+.node-editor-outputs {
+  text-align: right;
+}
+
+.node-editor-node-body {
+  display: flex;
+  margin: 0.5em;
+}
+
+.context-menu, .context-menu-submenu {
+  position: fixed;
+  z-index: 9999;
+  background: #080808AA;
+  color: white;
+  backdrop-filter: blur(16px);
+  display: none;
+}
+
+.context-menu-submenu {
+  left: 100%;
+  margin-top: -24px;
+}
+
+.context-menu-item {
+  cursor: pointer;
+  padding: 0.25em;
+  height: 24px;
+}
+
+.context-menu-item-group:hover .context-menu-submenu {
+  display: block;
+}
+
+.context-menu-item:hover {
+  border: 1px solid var(--secondary);
+  background: var(--input-hover);
+}

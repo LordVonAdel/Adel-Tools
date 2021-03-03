@@ -1,6 +1,5 @@
 /**
  * https://www.khronos.org/opengl/wiki/S3_Texture_Compression
- * WIP
  */
 import Vector from "./Vector.js";
 
@@ -15,8 +14,8 @@ let DXT = {
       if (width < 4 || height < 4) return buffer;
 
       let index = 0;
-      for (let y = 0; y < width; y += 4) {
-        for (let x = 0; x < height; x += 4) {
+      for (let y = 0; y < height; y += 4) {
+        for (let x = 0; x < width; x += 4) {
           
           let minColor = [0xff, 0xff, 0xff];
           let maxColor = [0, 0, 0];
@@ -104,7 +103,6 @@ let DXT = {
 
           for (let i = 0; i < 16; i += 4) {
             buffer[index] = (lookup[i + 3] << 6) + (lookup[i + 2] << 4) + (lookup[i + 1] << 2) + lookup[i + 0];
-            //buffer[index] = (lookup[i]) + (lookup[i + 1] << 6) + (lookup[i + 2] << 4) + (lookup[i + 3] << 2);
             index ++;
           }
 
