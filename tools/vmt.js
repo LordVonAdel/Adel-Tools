@@ -40,20 +40,28 @@ class VMTTool extends Tool {
 
   async importMaterial() {
     this.showSpinner();
-    let vmtText = (await this.bufferFromFileInput(this.fileInput)).toString();
-    let parsed = KVClass.parse(vmtText);
-    console.log(parsed);
+    this.hideError();
 
-    let proxies = parsed.getSubclassesByClassname("Proxies")[0];
-    if (proxies) {
-      let x = 0;
-      for (let subclass of proxies.subclasses) {
-        this.nodeEditor.spawnNode(subclass.classname, x);
-        x += 256;
+    try {
+      let vmtText = (await this.bufferFromFileInput(this.fileInput)).toString();
+      let parsed = KVClass.parse(vmtText);
+      console.log(parsed);
+      let proxies = parsed.getSubclassesByClassname("Proxies")[0];
+      let shader = parsed.classname;
+      this.nodeEditor.spawnNode(shader, 32, 128);
+
+      if (proxies) {
+        let x = 0;
+        for (let subclass of proxies.subclasses) {
+          this.nodeEditor.spawnNode(subclass.classname, x);
+          x += 256;
+        }
       }
+    } catch (e) {
+      this.showError(e.message);
+    } finally {
+      this.hideSpinner();
     }
-
-    this.hideSpinner();
   }
 }
 
@@ -61,12 +69,16 @@ const VariableTypes = {
   Float: {
     color: "#00FF00"
   },
-  Vector: {},
+  Vector: {
+    color: "#d91cc9"
+  },
   Vector2: {},
   Texture: {},
   String: {},
   Matrix: {},
-  Boolean: {},
+  Boolean: {
+    color: "#d94e1c"
+  },
   Material: {},
   Integer: {},
   RGB: {},
@@ -698,6 +710,17 @@ const ProxyNodes = {
       { name: "%compilewater", type: VariableTypes.Boolean },
       { name: "$surfaceprop" },
       { name: "%tooltexture", type: VariableTypes.Texture },
+    ],
+    out: []
+  },
+  UnlitTwoTexture: {
+    description: `Two base textures are multiplied together and can be transformed independently. (Just like the Multiply blending mode in typical image editors.) Unrelated to WorldVertexTransition, which is used for making alpha fading transitions between two base textures on displacements.`,
+    in: [
+      { name: "$basetexture", type: VariableTypes.Texture },
+      { name: "$surfaceprop", type: VariableTypes.String },
+      { name: "$model", type: VariableTypes.Boolean },
+      { name: "$nocull", type: VariableTypes.Boolean },
+      { name: "$additive", type: VariableTypes.Boolean }
     ],
     out: []
   }

@@ -47,7 +47,7 @@ export default class KVClass {
 
 KVClass.parse = function(text) {
   let lines = text.trim().split("\n").map(l => l.trim()).filter(l => l.length > 0);
-  let classname = lines.shift();
+  let classname = lines.shift().replaceAll('"', "");
   lines.shift();
   let kv = new KVClass(classname);
 

@@ -228,12 +228,14 @@ button:hover, .file-download:hover, .block-link:hover {
   background: #101010;
   position: relative;
   overflow: scroll;
+  user-select: none;
 }
 
 .node-editor-node {
   position: absolute;
   border: 1px solid var(--secondary);
   border-radius: 0.5em;
+  background: #202020;
 }
 
 .node-editor-node-title {
@@ -249,13 +251,37 @@ button:hover, .file-download:hover, .block-link:hover {
   margin-right: 1em;
 }
 
+.node-editor-inputs .node-connection-point {
+  border-top-left-radius: 0px;
+  border-bottom-left-radius: 0px;
+  margin-right: 0.25em;
+  margin-left: -1px;
+  border-left: none;
+}
+
+.node-editor-outputs .node-connection-point {
+  border-top-right-radius: 0px;
+  border-bottom-right-radius: 0px;
+  margin-left: 0.25em;
+  margin-right: -1px;
+  border-right: none;
+}
+
 .node-editor-outputs {
   text-align: right;
 }
 
 .node-editor-node-body {
   display: flex;
-  margin: 0.5em;
+}
+
+.node-connection-point {
+  border-radius: 100%;
+  width: 0.75em;
+  height: 0.75em;
+  background: #DADADA;
+  border: 1px solid black;
+  display: inline-block;
 }
 
 .context-menu, .context-menu-submenu {

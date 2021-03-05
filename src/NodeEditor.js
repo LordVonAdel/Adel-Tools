@@ -9,7 +9,25 @@ export default class NodeEditor {
     this.dom.style.height = "512px";
     this.nodeTypes = [];
 
+    this.dragged = null;
+    this.dragOffset = null;
     this.contextMenu = new ContextMenu(this.dom);
+
+    document.body.addEventListener("mousemove", (e) => {
+      let editorBox = this.dom.getClientRects()[0];
+
+      if (this.dragged) {
+        this.dragged.setPosition(
+          e.clientX - this.dragOffset[0] - editorBox.x,
+          e.clientY - this.dragOffset[1] - editorBox.y
+        );
+      }
+    });
+
+    document.body.addEventListener("mouseup", (e) => {
+      this.dragged = null;
+    });
+
   }
 
   registerNodes(nodes) {
@@ -20,9 +38,10 @@ export default class NodeEditor {
   }
 
   spawnNode(typeName, x = 0, y = 0) {
-    let type = this.nodeTypes.find(n => n.name == typeName);
+    let type = this.nodeTypes.find(n => n.name.toLowerCase() == typeName.toLowerCase());
     if (!type) throw new Error(`Node type ${typeName} does not exists!`);
     let node = new Node(type);
+    node.editor = this;
     this.dom.appendChild(node.dom);
 
     node.setPosition(x, y)
@@ -41,6 +60,10 @@ export default class NodeEditor {
       });
     }
     this.contextMenu.setItems(context);
+  }
+
+  focusNode(node) {
+    this.dom.appendChild(node.dom);
   }
 
 }
@@ -64,7 +87,7 @@ class Node {
 
     let title = document.createElement("div");
     title.classList.add("node-editor-node-title")
-    title.innerText = this.nodeType.name;
+    title.innerText = this.nodeType.alias || this.nodeType.name;
     this.dom.appendChild(title);
 
     let body = document.createElement("div");
@@ -81,15 +104,56 @@ class Node {
 
     for (let input of nodeType.in) {
       let div = document.createElement("div");
-      div.innerText = input.name;
+
+      let connectionPoint = document.createElement("div");
+      div.appendChild(connectionPoint);
+      connectionPoint.classList.add("node-connection-point");
+
+      if ("type" in input) {
+        let type = input.type;
+        if ("color" in type) {
+          connectionPoint.style.background = type.color;
+        }
+      }
+
+      let nameText = document.createElement("span");
+      div.appendChild(nameText);
+      nameText.innerText = input.alias || input.name;
       inputList.appendChild(div);
     }
 
     for (let output of nodeType.out) {
       let div = document.createElement("div");
-      div.innerText = output.name;
+
+      let nameText = document.createElement("span");
+      div.appendChild(nameText);
+      nameText.innerText = output.alias || output.name;
+
+      let connectionPoint = document.createElement("div");
+      div.appendChild(connectionPoint);
+      connectionPoint.classList.add("node-connection-point");
+
+      if ("type" in output) {
+        let type = output.type;
+        if ("color" in type) {
+          connectionPoint.style.background = type.color;
+        }
+      }
+
       outputList.appendChild(div);
     }
+
+    this.editor = null;
+    title.addEventListener("mousedown", (e) => {
+      this.editor.focusNode(this);
+      this.editor.dragged = this;
+      let nodeBox = title.getClientRects()[0];
+      
+      this.editor.dragOffset = [
+        e.clientX - nodeBox.x,
+        e.clientY - nodeBox.y
+      ];
+    });
   }
 
   setPosition(x, y) {
