@@ -5882,6 +5882,7 @@ window.MDL = require('source-mdl');
 window.Buffer = require('buffer/').Buffer;
 window.Struct = require('structron');
 window.JSZip = require('jszip');
+window.DXTN = require('dxtn');
 
 window.onload = async function() {
   let toolId = location.href.split("=")[1];
@@ -5904,7 +5905,7 @@ window.onload = async function() {
   await Tool.loadScript("./tools/" + toolId + ".js");
   document.getElementById("spinner").classList.add("hidden");
 }
-},{"buffer/":32,"jszip":44,"source-mdl":88,"structron":98}],31:[function(require,module,exports){
+},{"buffer/":32,"dxtn":35,"jszip":47,"source-mdl":91,"structron":101}],31:[function(require,module,exports){
 'use strict'
 
 exports.byteLength = byteLength
@@ -7877,7 +7878,511 @@ var hexSliceLookupTable = (function () {
 })()
 
 }).call(this,require("buffer").Buffer)
-},{"base64-js":31,"buffer":3,"ieee754":33}],33:[function(require,module,exports){
+},{"base64-js":31,"buffer":3,"ieee754":36}],33:[function(require,module,exports){
+/**
+ * Useful sources:
+ * https://www.khronos.org/opengl/wiki/S3_Texture_Compression
+ * https://www.khronos.org/registry/DataFormat/specs/1.1/dataformat.1.1.html#S3TC
+ */
+const DXT1BlockSize = 8;
+const DXT3BlockSize = 16;
+const DXT5BlockSize = 16;
+
+const RGBABlockSize = 64;
+const BlockWidth = 4;
+const BlockHeight = 4;
+
+const AlphaTest = 127;
+
+const DXTUtils = require("./DXTUtils.js");
+
+// Temp buffers. Allocate upfront and reuse for calls to increase performance
+const alphaLookupBuffer = new Uint8Array(8);
+const colorLookupBuffer = new Uint8Array(16);
+const tmpDXT5AlphaBuffer = new Uint8Array(16);
+
+function compressBlockDXT1(pixels, outArray = null, forceNoAlpha = false) {
+  let maxR = 0;
+  let maxG = 0;
+  let maxB = 0;
+  let minR = 255;
+  let minG = 255;
+  let minB = 255;
+
+  let minA = 255;
+  let maxA = 0;
+
+  for (let i = 0; i < pixels.length; i+=4) {
+    let r = pixels[i + 0];
+    let g = pixels[i + 1];
+    let b = pixels[i + 2];
+    let a = pixels[i + 3];
+    
+    if (a < minA) minA = a;
+    if (a > maxA) maxA = a;
+    if (a == 0) continue; // Full transparency should not impact color
+
+    if (r > maxR) maxR = r;
+    if (g > maxG) maxG = g;
+    if (b > maxB) maxB = b;
+    if (r < minR) minR = r;
+    if (g < minG) minG = g;
+    if (b < minB) minB = b;
+  }
+
+  let c0 = ((maxR & 0b11111000) << 8) + ((maxG & 0b11111100) << 3) + ((maxB & 0b11111000) >> 3);
+  let c1 = ((minR & 0b11111000) << 8) + ((minG & 0b11111100) << 3) + ((minB & 0b11111000) >> 3);
+
+  if (minA < AlphaTest && !forceNoAlpha) {
+    let temp = c0;
+    c0 = c1;
+    c1 = temp;
+
+    if (maxA == 0) {
+      c1 = 0xFFFF;
+    }
+  }
+
+  let lookup = DXTUtils.generateDXT1Lookup(c0, c1, colorLookupBuffer);
+
+  let out = outArray || new Uint8Array(DXT1BlockSize);
+  let indices = [];
+
+  for (let i = 0; i < pixels.length; i+= 4) {
+    let index = DXTUtils.findNearestOnLookup([
+      pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]
+    ], lookup);
+    indices.push(index);
+  }
+
+  out[0] = c0 & 0x00ff;
+  out[1] = (c0 & 0xff00) >> 8;
+  out[2] = c1 & 0x00ff;
+  out[3] = (c1 & 0xff00) >> 8;
+
+  out[4] = (indices[00] << 6) | (indices[01] << 4) | (indices[02] << 2) | indices[03];
+  out[5] = (indices[04] << 6) | (indices[05] << 4) | (indices[06] << 2) | indices[07];
+  out[6] = (indices[08] << 6) | (indices[09] << 4) | (indices[10] << 2) | indices[11];
+  out[7] = (indices[12] << 6) | (indices[13] << 4) | (indices[14] << 2) | indices[15];
+
+  return out;
+}
+
+function compressBlockDXT3(pixels, outArray = null) {
+  let out = outArray || new Uint8Array(DXT3BlockSize);
+  compressBlockDXT1(pixels, out, true);
+
+  for (let i = 0; i < 4; i++) {
+    out[8 + i * 2] = out[i * 2];
+    out[9 + i * 2] = out[i * 2 + 1];
+
+    out[i * 2 + 0] = ((pixels[i * 16 + 11] & 0xf0) >> 0) | ((pixels[i * 16 + 15] & 0xf0) >> 4);
+    out[i * 2 + 1] = ((pixels[i * 16 + 07] & 0xf0) >> 4) | ((pixels[i * 16 + 03] & 0xf0) >> 0);
+  }
+  return out;
+}
+
+function compressBlockDXT5(pixels, outArray = null) {
+  let out = outArray || new Uint8Array(DXT5BlockSize);
+  compressBlockDXT1(pixels, out, true);
+  let minAlpha = 255;
+  let maxAlpha = 0;
+  for (let i = 0; i < 16; i++) {
+    minAlpha = Math.min(pixels[i * 4 + 3], minAlpha);
+    maxAlpha = Math.max(pixels[i * 4 + 3], maxAlpha);
+  }
+
+  for (let i = 0; i < 8; i++) {
+    out[i + 8] = out[i];
+  }
+
+  out[0] = minAlpha;
+  out[1] = maxAlpha;
+  
+  let alphaLookup = DXTUtils.generateDXT5AlphaLookup(minAlpha, maxAlpha, alphaLookupBuffer);
+
+  let alphaIndices = tmpDXT5AlphaBuffer;
+  for (let i = 0; i < 16; i++) {
+    let srcAlpha = pixels[i * 4 + 3];
+    let nearestIndex = 0;
+    let nearestDistance = 255;
+    for (let j = 0; j < 8; j++) {
+      let delta = Math.abs(srcAlpha - alphaLookup[j]);
+      if (delta < nearestDistance) {
+        nearestDistance = delta;
+        nearestIndex = j;
+      }
+    }
+    alphaIndices[i] = nearestIndex;
+  }
+
+  let out234 = alphaIndices[3] 
+            | (alphaIndices[2] << 3) 
+            | (alphaIndices[1] << 6) 
+            | (alphaIndices[0] << 9) 
+            | (alphaIndices[7] << 12) 
+            | (alphaIndices[6] << 15) 
+            | (alphaIndices[5] << 18) 
+            | (alphaIndices[4] << 21);
+  out[2] = (out234 & 0x0000ff);
+  out[3] = (out234 & 0x00ff00) >> 8;
+  out[4] = (out234 & 0xff0000) >> 16;
+
+  let out567 = alphaIndices[11] 
+  | (alphaIndices[10] << 3) 
+  | (alphaIndices[09] << 6) 
+  | (alphaIndices[08] << 9) 
+  | (alphaIndices[15] << 12) 
+  | (alphaIndices[14] << 15) 
+  | (alphaIndices[13] << 18) 
+  | (alphaIndices[12] << 21);
+  out[5] = (out567 & 0x0000ff);
+  out[6] = (out567 & 0x00ff00) >> 8;
+  out[7] = (out567 & 0xff0000) >> 16;
+
+  return out;
+}
+
+function decompressBlockDXT1(data, outArray = null) {
+  if (data.length != DXT1BlockSize) return false;
+
+  const cVal0 = (data[1] << 8) + data[0];
+  const cVal1 = (data[3] << 8) + data[2];
+  const lookup = DXTUtils.generateDXT1Lookup(cVal0, cVal1);
+
+  const out = outArray || new Uint8Array(RGBABlockSize);
+  for (let i = 0; i < 16; i++) {
+    let bitOffset = i * 2;
+    let byte = 4 + Math.floor(bitOffset / 8);
+    let bits = (data[byte] >> bitOffset % 8) & 3;
+
+    out[i * 4 + 0] = lookup[bits * 4 + 0];
+    out[i * 4 + 1] = lookup[bits * 4 + 1];
+    out[i * 4 + 2] = lookup[bits * 4 + 2];
+    out[i * 4 + 3] = lookup[bits * 4 + 3];
+  }
+
+  return out;
+}
+
+function decompressBlockDXT3(data, outArray = null) {
+  const out = outArray || new Uint8Array(RGBABlockSize);
+  decompressBlockDXT1(data.slice(8, 16), out);
+  
+  for (let i = 0; i < 8; i++) {
+    out[i * 8 + 3] = (data[i] & 0x0f) << 4; 
+    out[i * 8 + 7] = (data[i] & 0xf0);
+  }
+
+  return out;
+}
+
+function decompressBlockDXT5(data, outArray = null) {
+  const out = outArray || new Uint8Array(RGBABlockSize);
+  decompressBlockDXT1(data.slice(8, 16), out);
+
+  let alpha0 = data[0];
+  let alpha1 = data[1];
+
+  let alphaLookup = DXTUtils.generateDXT5AlphaLookup(alpha0, alpha1, alphaLookupBuffer);
+  out[31] = alphaLookup[ (data[4] & 0b11100000) >> 5];
+  out[27] = alphaLookup[ (data[4] & 0b00011100) >> 2];
+  out[23] = alphaLookup[((data[4] & 0b00000011) << 1) + ((data[3] & 0b10000000) >> 7)];
+  out[19] = alphaLookup[ (data[3] & 0b01110000) >> 4];
+  out[15] = alphaLookup[ (data[3] & 0b00001110) >> 1];
+  out[11] = alphaLookup[((data[3] & 0b00000001) << 2) + ((data[2] & 0b11000000) >> 6)];
+  out[07] = alphaLookup[ (data[2] & 0b00111000) >> 3];
+  out[03] = alphaLookup[ (data[2] & 0b00000111) >> 0];
+
+  out[63] = alphaLookup[ (data[7] & 0b11100000) >> 5];
+  out[59] = alphaLookup[ (data[7] & 0b00011100) >> 2];
+  out[55] = alphaLookup[((data[7] & 0b00000011) << 1) + ((data[6] & 0b10000000) >> 7)];
+  out[51] = alphaLookup[ (data[6] & 0b01110000) >> 4];
+  out[47] = alphaLookup[ (data[6] & 0b00001110) >> 1];
+  out[43] = alphaLookup[((data[6] & 0b00000001) << 2) + ((data[5] & 0b11000000) >> 6)];
+  out[39] = alphaLookup[ (data[5] & 0b00111000) >> 3];
+  out[35] = alphaLookup[ (data[5] & 0b00000111) >> 0];
+  
+  return out;
+}
+
+function compress(width, height, pixels, compression) {
+  if (width % BlockWidth != 0) throw new Error("Width of the texture must be divisible by 4");
+  if (height % BlockHeight != 0) throw new Error("Height of the texture must be divisible by 4");
+  if (width < BlockWidth || height < BlockHeight) throw new Error("Size of the texture is to small");
+  if (width * height * (RGBABlockSize / (BlockHeight * BlockWidth)) != pixels.length) throw new Error("Pixel data of the input does not match dimensions");
+
+  let w = width / BlockWidth;
+  let h = height / BlockHeight;
+  let blockNumber = w*h;
+  let buffer = new Uint8Array(blockNumber * compression.blockSize);
+  let rgbaBlock = new Uint8Array(RGBABlockSize);
+  let dxtBlock = new Uint8Array(compression.blockSize);
+
+  for (let i = 0; i < blockNumber; i++) {
+    let pixelX = (i % w) * 4;
+    let pixelY = Math.floor(i / w) * 4;
+
+    let j = 0;
+    for (let y = 0; y < 4; y++) {
+      for (let x = 3; x >= 0; x--) {
+        let px = x + pixelX;
+        let py = y + pixelY;
+        let baseOffset = px * 4 + py * 4 * width;
+        rgbaBlock[j + 0] = pixels[baseOffset + 0];
+        rgbaBlock[j + 1] = pixels[baseOffset + 1];
+        rgbaBlock[j + 2] = pixels[baseOffset + 2];
+        rgbaBlock[j + 3] = pixels[baseOffset + 3];
+        j += 4;
+      }
+    }
+
+    let compressed = compression.blockCompressMethod(rgbaBlock, dxtBlock);
+    for (let j = 0; j < compression.blockSize; j++) {
+      buffer[i * compression.blockSize + j] = compressed[j];
+    }
+  }
+
+  return buffer;
+}
+
+function decompress(width, height, data, compression) {
+  if (width % BlockWidth != 0) throw new Error("Width of the texture must be divisible by 4");
+  if (height % BlockHeight != 0) throw new Error("Height of the texture must be divisible by 4");
+  if (width < BlockWidth || height < BlockHeight) throw new Error("Size of the texture is to small");
+
+  let w = width / BlockWidth;
+  let h = height / BlockHeight;
+  let blockNumber = w * h;
+
+  if (blockNumber * compression.blockSize != data.length) throw new Error("Data does not match dimensions");
+
+  let out = new Uint8Array(width * height * 4);
+  let blockBuffer = new Uint8Array(RGBABlockSize);
+
+  for (let i = 0; i < blockNumber; i++) {
+    let decompressed = compression.blockDecompressMethod(data.slice(i * compression.blockSize, (i+1) * compression.blockSize), blockBuffer);
+    let pixelX = (i % w) * 4;
+    let pixelY = Math.floor(i / w) * 4;
+
+    let j = 0;
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        let px = x + pixelX;
+        let py = y + pixelY;
+        out[px * 4 + py * 4 * width]     = decompressed[j];
+        out[px * 4 + py * 4 * width + 1] = decompressed[j + 1];
+        out[px * 4 + py * 4 * width + 2] = decompressed[j + 2];
+        out[px * 4 + py * 4 * width + 3] = decompressed[j + 3];
+        j += 4;
+      }
+    }
+  }
+
+  return out;
+}
+
+module.exports = {
+  DXT1: {
+    compress(width, height, pixels) {
+      return compress(width, height, pixels, {
+        blockSize: DXT1BlockSize,
+        blockCompressMethod: compressBlockDXT1
+      });
+    },
+
+    decompress(width, height, data) {
+       return decompress(width, height, data, {
+        blockSize: DXT1BlockSize,
+        blockDecompressMethod: decompressBlockDXT1
+      });
+    }
+  },
+  DXT3: {
+    compress(width, height, pixels) {
+      return compress(width, height, pixels, {
+        blockSize: DXT3BlockSize,
+        blockCompressMethod: compressBlockDXT3
+      });
+    },
+
+    decompress(width, height, data) {
+       return decompress(width, height, data, {
+        blockSize: DXT3BlockSize,
+        blockDecompressMethod: decompressBlockDXT3
+      });
+    }
+  },
+  DXT5: {
+    compress(width, height, pixels) {
+      return compress(width, height, pixels, {
+        blockSize: DXT5BlockSize,
+        blockCompressMethod: compressBlockDXT5
+      });
+    },
+
+    decompress(width, height, data) {
+       return decompress(width, height, data, {
+        blockSize: DXT5BlockSize,
+        blockDecompressMethod: decompressBlockDXT5
+      });
+    }
+  }
+}
+},{"./DXTUtils.js":34}],34:[function(require,module,exports){
+module.exports = {
+  generateDXT1Lookup(colorValue0, colorValue1, out = null) {
+    let color0 = this.getComponentsFromRGB565(colorValue0);
+    let color1 = this.getComponentsFromRGB565(colorValue1);
+
+    let lookup = out || new Uint8Array(16);
+
+    if (colorValue0 > colorValue1) {
+      // Non transparent mode
+      lookup[0] = Math.floor((color0.R) * 255);
+      lookup[1] = Math.floor((color0.G) * 255);
+      lookup[2] = Math.floor((color0.B) * 255);
+      lookup[3] = Math.floor(255);
+
+      lookup[4] = Math.floor((color1.R) * 255);
+      lookup[5] = Math.floor((color1.G) * 255);
+      lookup[6] = Math.floor((color1.B) * 255);
+      lookup[7] = Math.floor(255);
+
+      lookup[8] = Math.floor((color0.R * 2/3 + color1.R * 1/3 ) * 255);
+      lookup[9] = Math.floor((color0.G * 2/3 + color1.G * 1/3 ) * 255);
+      lookup[10] = Math.floor((color0.B * 2/3 + color1.B * 1/3 ) * 255);
+      lookup[11] = Math.floor(255);
+
+      lookup[12] = Math.floor((color0.R * 1/3 + color1.R * 2/3) * 255);
+      lookup[13] = Math.floor((color0.G * 1/3 + color1.G * 2/3) * 255);
+      lookup[14] = Math.floor((color0.B * 1/3 + color1.B * 2/3) * 255);
+      lookup[15] = Math.floor(255);
+
+    } else {
+      // transparent mode
+      lookup[0] = Math.floor((color0.R) * 255);
+      lookup[1] = Math.floor((color0.G) * 255);
+      lookup[2] = Math.floor((color0.B) * 255);
+      lookup[3] = Math.floor(255);
+
+      lookup[4] = Math.floor((color0.R * 1/2 + color1.R * 1/2 ) * 255);
+      lookup[5] = Math.floor((color0.G * 1/2 + color1.G * 1/2 ) * 255);
+      lookup[6] = Math.floor((color0.B * 1/2 + color1.B * 1/2 ) * 255);
+      lookup[7] = Math.floor(255);
+
+      lookup[08] = Math.floor((color1.R) * 255);
+      lookup[09] = Math.floor((color1.G) * 255);
+      lookup[10] = Math.floor((color1.B) * 255);
+      lookup[11] = Math.floor(255);
+
+      lookup[12] = Math.floor(0);
+      lookup[13] = Math.floor(0);
+      lookup[14] = Math.floor(0);
+      lookup[15] = Math.floor(0);
+    }
+
+    return lookup;
+  },
+
+  generateDXT5AlphaLookup(alpha0, alpha1, array = null) {
+    let alphaLookup = array || new Uint8Array(8);
+    alphaLookup[0] = alpha0;
+    alphaLookup[1] = alpha1;
+    if (alpha0 > alpha1) {
+      alphaLookup[2] = Math.round((6 * alpha0 + 1 * alpha1) / 7);
+      alphaLookup[3] = Math.round((5 * alpha0 + 2 * alpha1) / 7);
+      alphaLookup[4] = Math.round((4 * alpha0 + 3 * alpha1) / 7);
+      alphaLookup[5] = Math.round((3 * alpha0 + 4 * alpha1) / 7);
+      alphaLookup[6] = Math.round((2 * alpha0 + 5 * alpha1) / 7);
+      alphaLookup[7] = Math.round((1 * alpha0 + 6 * alpha1) / 7);
+    } else {
+      alphaLookup[2] = Math.round((4 * alpha0 + 1 * alpha1) / 5);
+      alphaLookup[3] = Math.round((3 * alpha0 + 2 * alpha1) / 5);
+      alphaLookup[4] = Math.round((2 * alpha0 + 3 * alpha1) / 5);
+      alphaLookup[5] = Math.round((1 * alpha0 + 4 * alpha1) / 5);
+      alphaLookup[6] = 0;
+      alphaLookup[7] = 255;
+    }
+    return alphaLookup;
+  },
+
+  getError(pixels, block) {
+    let error = 0;
+    for (let i in pixels) {
+      error += Math.abs(pixels[i] - block[i]);
+    }
+    return error;
+  },
+
+  findNearestOnLookup(color, lookup) {
+    let minDistance = Infinity;
+    let minIndex = 0;
+
+    for (let i = 0; i < lookup.length; i += 4) {
+      let deltaR = (color[0] - lookup[i + 0]);
+      let deltaG = (color[1] - lookup[i + 1]);
+      let deltaB = (color[2] - lookup[i + 2]);
+      let deltaA = (color[3] - lookup[i + 3]);
+      let distance = deltaR * deltaR + deltaB * deltaB + deltaG * deltaG + deltaA * deltaA;
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        minIndex = i / 4;
+      }
+    }
+
+    return minIndex;
+  },
+
+  getComponentsFromRGB565(color) {
+    return {
+      R: ((color & 0b11111000_00000000) >> 8) / 0xff,
+      G: ((color & 0b00000111_11100000) >> 3) / 0xff,
+      B: ((color & 0b00000000_00011111) << 3) / 0xff
+    }
+  },
+
+  makeRGB565(r, g, b) {
+    return ((r & 0b11111000) << 8) | ((g & 0b11111100) << 3) | ((b & 0b11111000) >> 3);
+  }
+}
+},{}],35:[function(require,module,exports){
+const DXT = require("./DXT.js");
+
+function compressDXT1(width, height, rgba8888) {
+  return DXT.DXT1.compress(width, height, rgba8888);
+}
+
+function compressDXT3(width, height, rgba8888) {
+  return DXT.DXT3.compress(width, height, rgba8888);
+}
+
+function compressDXT5(width, height, rgba8888) {
+  return DXT.DXT5.compress(width, height, rgba8888);
+}
+
+function decompressDXT1(width, height, rgba8888) {
+  return DXT.DXT1.decompress(width, height, rgba8888);
+}
+
+function decompressDXT3(width, height, rgba8888) {
+  return DXT.DXT3.decompress(width, height, rgba8888);
+}
+
+function decompressDXT5(width, height, rgba8888) {
+  return DXT.DXT5.decompress(width, height, rgba8888);
+}
+
+module.exports = {
+  compressDXT1,
+  decompressDXT1,
+  compressDXT3,
+  decompressDXT3,
+  compressDXT5,
+  decompressDXT5
+}
+},{"./DXT.js":33}],36:[function(require,module,exports){
 /*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
@@ -7964,7 +8469,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],34:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 (function (global){
 'use strict';
 var Mutation = global.MutationObserver || global.WebKitMutationObserver;
@@ -8037,7 +8542,7 @@ function immediate(task) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],35:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 'use strict';
 var utils = require('./utils');
 var support = require('./support');
@@ -8145,7 +8650,7 @@ exports.decode = function(input) {
     return output;
 };
 
-},{"./support":64,"./utils":66}],36:[function(require,module,exports){
+},{"./support":67,"./utils":69}],39:[function(require,module,exports){
 'use strict';
 
 var external = require("./external");
@@ -8222,7 +8727,7 @@ CompressedObject.createWorkerFrom = function (uncompressedWorker, compression, c
 
 module.exports = CompressedObject;
 
-},{"./external":40,"./stream/Crc32Probe":59,"./stream/DataLengthProbe":60,"./stream/DataWorker":61}],37:[function(require,module,exports){
+},{"./external":43,"./stream/Crc32Probe":62,"./stream/DataLengthProbe":63,"./stream/DataWorker":64}],40:[function(require,module,exports){
 'use strict';
 
 var GenericWorker = require("./stream/GenericWorker");
@@ -8238,7 +8743,7 @@ exports.STORE = {
 };
 exports.DEFLATE = require('./flate');
 
-},{"./flate":41,"./stream/GenericWorker":62}],38:[function(require,module,exports){
+},{"./flate":44,"./stream/GenericWorker":65}],41:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -8317,7 +8822,7 @@ module.exports = function crc32wrapper(input, crc) {
     }
 };
 
-},{"./utils":66}],39:[function(require,module,exports){
+},{"./utils":69}],42:[function(require,module,exports){
 'use strict';
 exports.base64 = false;
 exports.binary = false;
@@ -8330,7 +8835,7 @@ exports.comment = null;
 exports.unixPermissions = null;
 exports.dosPermissions = null;
 
-},{}],40:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 /* global Promise */
 'use strict';
 
@@ -8351,7 +8856,7 @@ module.exports = {
     Promise: ES6Promise
 };
 
-},{"lie":70}],41:[function(require,module,exports){
+},{"lie":73}],44:[function(require,module,exports){
 'use strict';
 var USE_TYPEDARRAY = (typeof Uint8Array !== 'undefined') && (typeof Uint16Array !== 'undefined') && (typeof Uint32Array !== 'undefined');
 
@@ -8438,7 +8943,7 @@ exports.uncompressWorker = function () {
     return new FlateWorker("Inflate", {});
 };
 
-},{"./stream/GenericWorker":62,"./utils":66,"pako":71}],42:[function(require,module,exports){
+},{"./stream/GenericWorker":65,"./utils":69,"pako":74}],45:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -8980,7 +9485,7 @@ ZipFileWorker.prototype.lock = function () {
 
 module.exports = ZipFileWorker;
 
-},{"../crc32":38,"../signature":57,"../stream/GenericWorker":62,"../utf8":65,"../utils":66}],43:[function(require,module,exports){
+},{"../crc32":41,"../signature":60,"../stream/GenericWorker":65,"../utf8":68,"../utils":69}],46:[function(require,module,exports){
 'use strict';
 
 var compressions = require('../compressions');
@@ -9039,7 +9544,7 @@ exports.generateWorker = function (zip, options, comment) {
     return zipFileWorker;
 };
 
-},{"../compressions":37,"./ZipFileWorker":42}],44:[function(require,module,exports){
+},{"../compressions":40,"./ZipFileWorker":45}],47:[function(require,module,exports){
 'use strict';
 
 /**
@@ -9093,7 +9598,7 @@ JSZip.loadAsync = function (content, options) {
 JSZip.external = require("./external");
 module.exports = JSZip;
 
-},{"./defaults":39,"./external":40,"./load":45,"./object":49,"./support":64}],45:[function(require,module,exports){
+},{"./defaults":42,"./external":43,"./load":48,"./object":52,"./support":67}],48:[function(require,module,exports){
 'use strict';
 var utils = require('./utils');
 var external = require("./external");
@@ -9177,7 +9682,7 @@ module.exports = function(data, options) {
     });
 };
 
-},{"./external":40,"./nodejsUtils":46,"./stream/Crc32Probe":59,"./utf8":65,"./utils":66,"./zipEntries":67}],46:[function(require,module,exports){
+},{"./external":43,"./nodejsUtils":49,"./stream/Crc32Probe":62,"./utf8":68,"./utils":69,"./zipEntries":70}],49:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -9238,7 +9743,7 @@ module.exports = {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":3}],47:[function(require,module,exports){
+},{"buffer":3}],50:[function(require,module,exports){
 "use strict";
 
 var utils = require('../utils');
@@ -9314,7 +9819,7 @@ NodejsStreamInputAdapter.prototype.resume = function () {
 
 module.exports = NodejsStreamInputAdapter;
 
-},{"../stream/GenericWorker":62,"../utils":66}],48:[function(require,module,exports){
+},{"../stream/GenericWorker":65,"../utils":69}],51:[function(require,module,exports){
 'use strict';
 
 var Readable = require('readable-stream').Readable;
@@ -9358,7 +9863,7 @@ NodejsStreamOutputAdapter.prototype._read = function() {
 
 module.exports = NodejsStreamOutputAdapter;
 
-},{"../utils":66,"readable-stream":50}],49:[function(require,module,exports){
+},{"../utils":69,"readable-stream":53}],52:[function(require,module,exports){
 'use strict';
 var utf8 = require('./utf8');
 var utils = require('./utils');
@@ -9749,7 +10254,7 @@ var out = {
 };
 module.exports = out;
 
-},{"./compressedObject":36,"./defaults":39,"./generate":43,"./nodejs/NodejsStreamInputAdapter":47,"./nodejsUtils":46,"./stream/GenericWorker":62,"./stream/StreamHelper":63,"./utf8":65,"./utils":66,"./zipObject":69}],50:[function(require,module,exports){
+},{"./compressedObject":39,"./defaults":42,"./generate":46,"./nodejs/NodejsStreamInputAdapter":50,"./nodejsUtils":49,"./stream/GenericWorker":65,"./stream/StreamHelper":66,"./utf8":68,"./utils":69,"./zipObject":72}],53:[function(require,module,exports){
 /*
  * This file is used by module bundlers (browserify/webpack/etc) when
  * including a stream implementation. We use "readable-stream" to get a
@@ -9760,7 +10265,7 @@ module.exports = out;
  */
 module.exports = require("stream");
 
-},{"stream":27}],51:[function(require,module,exports){
+},{"stream":27}],54:[function(require,module,exports){
 'use strict';
 var DataReader = require('./DataReader');
 var utils = require('../utils');
@@ -9819,7 +10324,7 @@ ArrayReader.prototype.readData = function(size) {
 };
 module.exports = ArrayReader;
 
-},{"../utils":66,"./DataReader":52}],52:[function(require,module,exports){
+},{"../utils":69,"./DataReader":55}],55:[function(require,module,exports){
 'use strict';
 var utils = require('../utils');
 
@@ -9937,7 +10442,7 @@ DataReader.prototype = {
 };
 module.exports = DataReader;
 
-},{"../utils":66}],53:[function(require,module,exports){
+},{"../utils":69}],56:[function(require,module,exports){
 'use strict';
 var Uint8ArrayReader = require('./Uint8ArrayReader');
 var utils = require('../utils');
@@ -9958,7 +10463,7 @@ NodeBufferReader.prototype.readData = function(size) {
 };
 module.exports = NodeBufferReader;
 
-},{"../utils":66,"./Uint8ArrayReader":55}],54:[function(require,module,exports){
+},{"../utils":69,"./Uint8ArrayReader":58}],57:[function(require,module,exports){
 'use strict';
 var DataReader = require('./DataReader');
 var utils = require('../utils');
@@ -9998,7 +10503,7 @@ StringReader.prototype.readData = function(size) {
 };
 module.exports = StringReader;
 
-},{"../utils":66,"./DataReader":52}],55:[function(require,module,exports){
+},{"../utils":69,"./DataReader":55}],58:[function(require,module,exports){
 'use strict';
 var ArrayReader = require('./ArrayReader');
 var utils = require('../utils');
@@ -10022,7 +10527,7 @@ Uint8ArrayReader.prototype.readData = function(size) {
 };
 module.exports = Uint8ArrayReader;
 
-},{"../utils":66,"./ArrayReader":51}],56:[function(require,module,exports){
+},{"../utils":69,"./ArrayReader":54}],59:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -10052,7 +10557,7 @@ module.exports = function (data) {
     return new ArrayReader(utils.transformTo("array", data));
 };
 
-},{"../support":64,"../utils":66,"./ArrayReader":51,"./NodeBufferReader":53,"./StringReader":54,"./Uint8ArrayReader":55}],57:[function(require,module,exports){
+},{"../support":67,"../utils":69,"./ArrayReader":54,"./NodeBufferReader":56,"./StringReader":57,"./Uint8ArrayReader":58}],60:[function(require,module,exports){
 'use strict';
 exports.LOCAL_FILE_HEADER = "PK\x03\x04";
 exports.CENTRAL_FILE_HEADER = "PK\x01\x02";
@@ -10061,7 +10566,7 @@ exports.ZIP64_CENTRAL_DIRECTORY_LOCATOR = "PK\x06\x07";
 exports.ZIP64_CENTRAL_DIRECTORY_END = "PK\x06\x06";
 exports.DATA_DESCRIPTOR = "PK\x07\x08";
 
-},{}],58:[function(require,module,exports){
+},{}],61:[function(require,module,exports){
 'use strict';
 
 var GenericWorker = require('./GenericWorker');
@@ -10089,7 +10594,7 @@ ConvertWorker.prototype.processChunk = function (chunk) {
 };
 module.exports = ConvertWorker;
 
-},{"../utils":66,"./GenericWorker":62}],59:[function(require,module,exports){
+},{"../utils":69,"./GenericWorker":65}],62:[function(require,module,exports){
 'use strict';
 
 var GenericWorker = require('./GenericWorker');
@@ -10115,7 +10620,7 @@ Crc32Probe.prototype.processChunk = function (chunk) {
 };
 module.exports = Crc32Probe;
 
-},{"../crc32":38,"../utils":66,"./GenericWorker":62}],60:[function(require,module,exports){
+},{"../crc32":41,"../utils":69,"./GenericWorker":65}],63:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -10146,7 +10651,7 @@ DataLengthProbe.prototype.processChunk = function (chunk) {
 module.exports = DataLengthProbe;
 
 
-},{"../utils":66,"./GenericWorker":62}],61:[function(require,module,exports){
+},{"../utils":69,"./GenericWorker":65}],64:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -10264,7 +10769,7 @@ DataWorker.prototype._tick = function() {
 
 module.exports = DataWorker;
 
-},{"../utils":66,"./GenericWorker":62}],62:[function(require,module,exports){
+},{"../utils":69,"./GenericWorker":65}],65:[function(require,module,exports){
 'use strict';
 
 /**
@@ -10529,7 +11034,7 @@ GenericWorker.prototype = {
 
 module.exports = GenericWorker;
 
-},{}],63:[function(require,module,exports){
+},{}],66:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -10745,7 +11250,7 @@ StreamHelper.prototype = {
 module.exports = StreamHelper;
 
 }).call(this,require("buffer").Buffer)
-},{"../base64":35,"../external":40,"../nodejs/NodejsStreamOutputAdapter":48,"../support":64,"../utils":66,"./ConvertWorker":58,"./GenericWorker":62,"buffer":3}],64:[function(require,module,exports){
+},{"../base64":38,"../external":43,"../nodejs/NodejsStreamOutputAdapter":51,"../support":67,"../utils":69,"./ConvertWorker":61,"./GenericWorker":65,"buffer":3}],67:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -10787,7 +11292,7 @@ try {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":3,"readable-stream":50}],65:[function(require,module,exports){
+},{"buffer":3,"readable-stream":53}],68:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -11064,7 +11569,7 @@ Utf8EncodeWorker.prototype.processChunk = function (chunk) {
 };
 exports.Utf8EncodeWorker = Utf8EncodeWorker;
 
-},{"./nodejsUtils":46,"./stream/GenericWorker":62,"./support":64,"./utils":66}],66:[function(require,module,exports){
+},{"./nodejsUtils":49,"./stream/GenericWorker":65,"./support":67,"./utils":69}],69:[function(require,module,exports){
 'use strict';
 
 var support = require('./support');
@@ -11542,7 +12047,7 @@ exports.prepareContent = function(name, inputData, isBinary, isOptimizedBinarySt
     });
 };
 
-},{"./base64":35,"./external":40,"./nodejsUtils":46,"./support":64,"set-immediate-shim":87}],67:[function(require,module,exports){
+},{"./base64":38,"./external":43,"./nodejsUtils":49,"./support":67,"set-immediate-shim":90}],70:[function(require,module,exports){
 'use strict';
 var readerFor = require('./reader/readerFor');
 var utils = require('./utils');
@@ -11806,7 +12311,7 @@ ZipEntries.prototype = {
 // }}} end of ZipEntries
 module.exports = ZipEntries;
 
-},{"./reader/readerFor":56,"./signature":57,"./support":64,"./utf8":65,"./utils":66,"./zipEntry":68}],68:[function(require,module,exports){
+},{"./reader/readerFor":59,"./signature":60,"./support":67,"./utf8":68,"./utils":69,"./zipEntry":71}],71:[function(require,module,exports){
 'use strict';
 var readerFor = require('./reader/readerFor');
 var utils = require('./utils');
@@ -12102,7 +12607,7 @@ ZipEntry.prototype = {
 };
 module.exports = ZipEntry;
 
-},{"./compressedObject":36,"./compressions":37,"./crc32":38,"./reader/readerFor":56,"./support":64,"./utf8":65,"./utils":66}],69:[function(require,module,exports){
+},{"./compressedObject":39,"./compressions":40,"./crc32":41,"./reader/readerFor":59,"./support":67,"./utf8":68,"./utils":69}],72:[function(require,module,exports){
 'use strict';
 
 var StreamHelper = require('./stream/StreamHelper');
@@ -12237,7 +12742,7 @@ for(var i = 0; i < removedMethods.length; i++) {
 }
 module.exports = ZipObject;
 
-},{"./compressedObject":36,"./stream/DataWorker":61,"./stream/GenericWorker":62,"./stream/StreamHelper":63,"./utf8":65}],70:[function(require,module,exports){
+},{"./compressedObject":39,"./stream/DataWorker":64,"./stream/GenericWorker":65,"./stream/StreamHelper":66,"./utf8":68}],73:[function(require,module,exports){
 'use strict';
 var immediate = require('immediate');
 
@@ -12512,7 +13017,7 @@ function race(iterable) {
   }
 }
 
-},{"immediate":34}],71:[function(require,module,exports){
+},{"immediate":37}],74:[function(require,module,exports){
 // Top level file is just a mixin of submodules & constants
 'use strict';
 
@@ -12528,7 +13033,7 @@ assign(pako, deflate, inflate, constants);
 
 module.exports = pako;
 
-},{"./lib/deflate":72,"./lib/inflate":73,"./lib/utils/common":74,"./lib/zlib/constants":77}],72:[function(require,module,exports){
+},{"./lib/deflate":75,"./lib/inflate":76,"./lib/utils/common":77,"./lib/zlib/constants":80}],75:[function(require,module,exports){
 'use strict';
 
 
@@ -12930,7 +13435,7 @@ exports.deflate = deflate;
 exports.deflateRaw = deflateRaw;
 exports.gzip = gzip;
 
-},{"./utils/common":74,"./utils/strings":75,"./zlib/deflate":79,"./zlib/messages":84,"./zlib/zstream":86}],73:[function(require,module,exports){
+},{"./utils/common":77,"./utils/strings":78,"./zlib/deflate":82,"./zlib/messages":87,"./zlib/zstream":89}],76:[function(require,module,exports){
 'use strict';
 
 
@@ -13355,7 +13860,7 @@ exports.inflate = inflate;
 exports.inflateRaw = inflateRaw;
 exports.ungzip  = inflate;
 
-},{"./utils/common":74,"./utils/strings":75,"./zlib/constants":77,"./zlib/gzheader":80,"./zlib/inflate":82,"./zlib/messages":84,"./zlib/zstream":86}],74:[function(require,module,exports){
+},{"./utils/common":77,"./utils/strings":78,"./zlib/constants":80,"./zlib/gzheader":83,"./zlib/inflate":85,"./zlib/messages":87,"./zlib/zstream":89}],77:[function(require,module,exports){
 'use strict';
 
 
@@ -13462,7 +13967,7 @@ exports.setTyped = function (on) {
 
 exports.setTyped(TYPED_OK);
 
-},{}],75:[function(require,module,exports){
+},{}],78:[function(require,module,exports){
 // String encode/decode helpers
 'use strict';
 
@@ -13651,7 +14156,7 @@ exports.utf8border = function (buf, max) {
   return (pos + _utf8len[buf[pos]] > max) ? pos : max;
 };
 
-},{"./common":74}],76:[function(require,module,exports){
+},{"./common":77}],79:[function(require,module,exports){
 'use strict';
 
 // Note: adler32 takes 12% for level 0 and 2% for level 6.
@@ -13704,7 +14209,7 @@ function adler32(adler, buf, len, pos) {
 
 module.exports = adler32;
 
-},{}],77:[function(require,module,exports){
+},{}],80:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -13774,7 +14279,7 @@ module.exports = {
   //Z_NULL:                 null // Use -1 or null inline, depending on var type
 };
 
-},{}],78:[function(require,module,exports){
+},{}],81:[function(require,module,exports){
 'use strict';
 
 // Note: we can't get significant speed boost here.
@@ -13835,7 +14340,7 @@ function crc32(crc, buf, len, pos) {
 
 module.exports = crc32;
 
-},{}],79:[function(require,module,exports){
+},{}],82:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -15711,7 +16216,7 @@ exports.deflatePrime = deflatePrime;
 exports.deflateTune = deflateTune;
 */
 
-},{"../utils/common":74,"./adler32":76,"./crc32":78,"./messages":84,"./trees":85}],80:[function(require,module,exports){
+},{"../utils/common":77,"./adler32":79,"./crc32":81,"./messages":87,"./trees":88}],83:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -15771,7 +16276,7 @@ function GZheader() {
 
 module.exports = GZheader;
 
-},{}],81:[function(require,module,exports){
+},{}],84:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -16118,7 +16623,7 @@ module.exports = function inflate_fast(strm, start) {
   return;
 };
 
-},{}],82:[function(require,module,exports){
+},{}],85:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -17676,7 +18181,7 @@ exports.inflateSyncPoint = inflateSyncPoint;
 exports.inflateUndermine = inflateUndermine;
 */
 
-},{"../utils/common":74,"./adler32":76,"./crc32":78,"./inffast":81,"./inftrees":83}],83:[function(require,module,exports){
+},{"../utils/common":77,"./adler32":79,"./crc32":81,"./inffast":84,"./inftrees":86}],86:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -18021,7 +18526,7 @@ module.exports = function inflate_table(type, lens, lens_index, codes, table, ta
   return 0;
 };
 
-},{"../utils/common":74}],84:[function(require,module,exports){
+},{"../utils/common":77}],87:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -18055,7 +18560,7 @@ module.exports = {
   '-6':   'incompatible version' /* Z_VERSION_ERROR (-6) */
 };
 
-},{}],85:[function(require,module,exports){
+},{}],88:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -19279,7 +19784,7 @@ exports._tr_flush_block  = _tr_flush_block;
 exports._tr_tally = _tr_tally;
 exports._tr_align = _tr_align;
 
-},{"../utils/common":74}],86:[function(require,module,exports){
+},{"../utils/common":77}],89:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -19328,7 +19833,7 @@ function ZStream() {
 
 module.exports = ZStream;
 
-},{}],87:[function(require,module,exports){
+},{}],90:[function(require,module,exports){
 (function (setImmediate){
 'use strict';
 module.exports = typeof setImmediate === 'function' ? setImmediate :
@@ -19339,9 +19844,9 @@ module.exports = typeof setImmediate === 'function' ? setImmediate :
 	};
 
 }).call(this,require("timers").setImmediate)
-},{"timers":28}],88:[function(require,module,exports){
+},{"timers":28}],91:[function(require,module,exports){
 module.exports = require('./src/MDL.js');
-},{"./src/MDL.js":89}],89:[function(require,module,exports){
+},{"./src/MDL.js":92}],92:[function(require,module,exports){
 const Import = require("./import/Import.js");
 const toGLTF = require("./export/toGLTF.js");
 const toOBJ = require("./export/toOBJ.js");
@@ -19471,7 +19976,7 @@ class MDL {
 
 module.exports = MDL;
 
-},{"./export/toGLTF.js":90,"./export/toOBJ.js":91,"./export/toXMODEL.js":92,"./import/Import.js":93}],90:[function(require,module,exports){
+},{"./export/toGLTF.js":93,"./export/toOBJ.js":94,"./export/toXMODEL.js":95,"./import/Import.js":96}],93:[function(require,module,exports){
 (function (Buffer){
 const POSITION_SIZE = 12;
 const NORMAL_SIZE = 12;
@@ -19628,7 +20133,7 @@ module.exports = function(mdl) {
   return gltf;
 }
 }).call(this,require("buffer").Buffer)
-},{"buffer":3}],91:[function(require,module,exports){
+},{"buffer":3}],94:[function(require,module,exports){
 /**
  * obj specification: http://paulbourke.net/dataformats/obj/
  * The materials library is not generated. The output links to a file called like the original mdl with ".mtl" appended.
@@ -19669,7 +20174,7 @@ module.exports = function(mdl) {
 
   return out;
 }
-},{}],92:[function(require,module,exports){
+},{}],95:[function(require,module,exports){
 // xmodel_export specification: https://wiki.zeroy.com/index.php?title=Call_of_Duty:_XMODEL_formats
 
 module.exports = function(mdl) {
@@ -19792,7 +20297,7 @@ module.exports = function(mdl) {
 
 	return result;
 }
-},{}],93:[function(require,module,exports){
+},{}],96:[function(require,module,exports){
 const studio = require('./studio.js');
 const optimize = require('./optimize.js');
 
@@ -19933,7 +20438,7 @@ class Import {
 }
 
 module.exports = Import;
-},{"./optimize.js":94,"./studio.js":95}],94:[function(require,module,exports){
+},{"./optimize.js":97,"./studio.js":98}],97:[function(require,module,exports){
 const StudioStruct = require("structron");
 
 /**
@@ -20016,7 +20521,7 @@ const FileHeader_t = new StudioStruct("FileHeader_t")
 module.exports = {
   FileHeader_t
 }
-},{"structron":98}],95:[function(require,module,exports){
+},{"structron":101}],98:[function(require,module,exports){
 const StudioStruct = require("structron");
 
 /**
@@ -20487,7 +20992,7 @@ module.exports = {
   mstudiovertex_t
 }
 
-},{"structron":98}],96:[function(require,module,exports){
+},{"structron":101}],99:[function(require,module,exports){
 (function (Buffer){
 /** 
  *  @class Report
@@ -20599,7 +21104,7 @@ class ReadContext {
 
 module.exports = ReadContext;
 }).call(this,require("buffer").Buffer)
-},{"buffer":3}],97:[function(require,module,exports){
+},{"buffer":3}],100:[function(require,module,exports){
 (function (Buffer){
 class WriteContext {
 
@@ -20630,7 +21135,7 @@ class WriteContext {
 
 module.exports = WriteContext;
 }).call(this,require("buffer").Buffer)
-},{"buffer":3}],98:[function(require,module,exports){
+},{"buffer":3}],101:[function(require,module,exports){
 const ReadContext = require('./ReadContext.js');
 const WriteContext = require('./WriteContext.js');
 
@@ -21052,7 +21557,7 @@ Struct.RULES = require('./rules.js');
 
 module.exports = Struct;
 
-},{"./ReadContext.js":96,"./WriteContext.js":97,"./rules.js":99,"./types.js":100}],99:[function(require,module,exports){
+},{"./ReadContext.js":99,"./WriteContext.js":100,"./rules.js":102,"./types.js":103}],102:[function(require,module,exports){
 module.exports = {
   EQUAL(a, b) {
     return function(dataObj, buffer) {
@@ -21065,7 +21570,7 @@ module.exports = {
     };
   }
 }
-},{}],100:[function(require,module,exports){
+},{}],103:[function(require,module,exports){
 (function (Buffer){
 /**
  * Inbuilt types

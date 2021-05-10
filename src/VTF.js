@@ -3,12 +3,6 @@
  */
 
 /**
- * @todo Implement DXT3/DXT5
- */
-
-import DXT from "./DXT.js";
-
-/**
  * Generate VTF 7.2 files
  */
 export default class VTF {
@@ -141,7 +135,7 @@ export default class VTF {
     this.width = w;
     this.height = h;
     this.frames = images.length;
-    this.mipmapCount = Math.min(Math.log2(w), Math.log2(h));
+    this.mipmapCount = Math.min(Math.log2(w) - 2, Math.log2(h) - 2);
 
     let canvas = document.createElement("canvas");
     canvas.width = w;
@@ -160,22 +154,26 @@ export default class VTF {
     // High res images
     let mipmaps = [];
 
-    for (let i = this.mipmapCount; i >= 0; i--) {
+    try {
+      for (let i = this.mipmapCount; i >= 0; i--) {
 
-      let mipWidth = w / (1 << i);
-      let mipHeight = h / (1 << i);
+        let mipWidth = w / (1 << i);
+        let mipHeight = h / (1 << i);
 
-      for (let j = 0; j < images.length; j++) {
-        let img = images[j];
-        ctx.clearRect(0, 0, mipWidth, mipHeight);
-        ctx.drawImage(img, 0, 0, w, h, 0, 0, mipWidth, mipHeight);
-        let pixelData = ctx.getImageData(0, 0, mipWidth, mipHeight);
-        let converted = this.highResImageFormat.encode(pixelData);
-        mipmaps.push(converted);
+        for (let j = 0; j < images.length; j++) {
+          let img = images[j];
+          ctx.clearRect(0, 0, mipWidth, mipHeight);
+          ctx.drawImage(img, 0, 0, w, h, 0, 0, mipWidth, mipHeight);
+          let pixelData = ctx.getImageData(0, 0, mipWidth, mipHeight);
+          let converted = this.highResImageFormat.encode(pixelData);
+          mipmaps.push(converted);
+        }
       }
+    } catch (e) {
+      throw e;
+    } finally {
+      canvas.remove();
     }
-
-    canvas.remove();
 
     this.resources.push({
       tag: [0x30, 0, 0],
@@ -281,7 +279,21 @@ VTF.Formats = {
   DXT1: {
     value: 13,
     encode(imageData) {
-      return DXT.DXT1.compress(imageData.width, imageData.height, imageData.data);
+      return DXTN.compressDXT1(imageData.width, imageData.height, imageData.data);
+    },
+    flags: 0
+  },
+  DXT3: {
+    value: 14,
+    encode(imageData) {
+      return DXTN.compressDXT3(imageData.width, imageData.height, imageData.data);
+    },
+    flags: 0
+  },
+  DXT5: {
+    value: 15,
+    encode(imageData) {
+      return DXTN.compressDXT5(imageData.width, imageData.height, imageData.data);
     },
     flags: 0
   },

@@ -2,6 +2,7 @@ window.MDL = require('source-mdl');
 window.Buffer = require('buffer/').Buffer;
 window.Struct = require('structron');
 window.JSZip = require('jszip');
+window.DXTN = require('dxtn');
 
 window.onload = async function() {
   let toolId = location.href.split("=")[1];
