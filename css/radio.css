@@ -1,0 +1,28 @@
+.radio {
+  display: flex;
+  padding: 0px;
+}
+
+.radio-item {
+  flex-grow: 1;
+  padding: 1em;
+  text-align: center;
+}
+
+.radio-item:hover, .radio-item.active:hover {
+  background: var(--input-hover);
+}
+
+.radio-item img {
+  max-width: 90%;
+  border: 1px solid transparent;
+}
+
+.radio-item.active {
+  color: var(--secondary);
+  background: #00000080
+}
+
+.radio-item.active img {
+  border: 1px solid var(--secondary);
+}

@@ -1,0 +1,28 @@
+.context-menu, .context-menu-submenu {
+  position: fixed;
+  z-index: 9999;
+  background: #080808AA;
+  color: white;
+  backdrop-filter: blur(16px);
+  display: none;
+}
+
+.context-menu-submenu {
+  left: 100%;
+  margin-top: -24px;
+}
+
+.context-menu-item {
+  cursor: pointer;
+  padding: 0.25em;
+  height: 24px;
+}
+
+.context-menu-item-group:hover .context-menu-submenu {
+  display: block;
+}
+
+.context-menu-item:hover {
+  border: 1px solid var(--secondary);
+  background: var(--input-hover);
+}

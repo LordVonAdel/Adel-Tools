@@ -1,0 +1,59 @@
+.node-editor {
+  background: #101010;
+  position: relative;
+  overflow: scroll;
+  user-select: none;
+}
+
+.node-editor-node {
+  position: absolute;
+  border: 1px solid var(--secondary);
+  border-radius: 0.5em;
+  background: #202020;
+}
+
+.node-editor-node-title {
+  width: 100%;
+  height: 24px;
+  border-bottom: 1px solid var(--secondary);
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 0.5em;
+}
+
+.node-editor-inputs {
+  margin-right: 1em;
+}
+
+.node-editor-inputs .node-connection-point {
+  border-top-left-radius: 0px;
+  border-bottom-left-radius: 0px;
+  margin-right: 0.25em;
+  margin-left: -1px;
+  border-left: none;
+}
+
+.node-editor-outputs .node-connection-point {
+  border-top-right-radius: 0px;
+  border-bottom-right-radius: 0px;
+  margin-left: 0.25em;
+  margin-right: -1px;
+  border-right: none;
+}
+
+.node-editor-outputs {
+  text-align: right;
+}
+
+.node-editor-node-body {
+  display: flex;
+}
+
+.node-connection-point {
+  border-radius: 100%;
+  width: 0.75em;
+  height: 0.75em;
+  background: #DADADA;
+  border: 1px solid black;
+  display: inline-block;
+}
