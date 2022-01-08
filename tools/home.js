@@ -18,6 +18,7 @@ class WallTool extends Tool {
     //this.addTag("h3", {text: "Converters"});
     this.addToolLink("mdl");
     this.addToolLink("vtf");
+    this.addToolLink("vtf2img");
 
     //this.addTag("h3", {text: "Generators"});
     this.addToolLink("wall");

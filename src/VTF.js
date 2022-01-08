@@ -10,6 +10,7 @@ export default class VTF {
   constructor(format) {
     this.resources = [];
     this.flags = format.flags;
+    this.version = [7, 2];
 
     this.width = 0;
     this.height = 0;
@@ -37,8 +38,8 @@ export default class VTF {
     buffer.writeUInt32LE(0x00465456, 0);
 
     // Version
-    buffer.writeUInt32LE(7, 4);
-    buffer.writeUInt32LE(2, 8);
+    buffer.writeUInt32LE(this.version[0], 4);
+    buffer.writeUInt32LE(this.version[1], 8);
 
     buffer.writeUInt32LE(headerSize, 12);
     buffer.writeUInt16LE(this.width, 16);
@@ -181,6 +182,101 @@ export default class VTF {
       data: Buffer.concat(mipmaps)
     });
   }
+
+  read(buffer) {
+    let signature = buffer.readUInt32LE(0);
+    if (signature != 0x00465456) {
+      throw new Error("File is corrupted or not in VTF format.");
+    }
+
+    this.version[0] = buffer.readUInt32LE(4);
+    this.version[1] = buffer.readUInt32LE(8);
+
+    if (this.version[0] != 7) { // May work with older versions
+      throw new Error(`Unsupported VTF file version: ${this.version[0]}.${this.version[1]}`);
+    }
+
+    let headerSize = buffer.readUInt32LE(12);
+
+    this.width = buffer.readUInt16LE(16);
+    this.height = buffer.readUInt16LE(18);
+    this.flags = buffer.readUInt32LE(20);
+    this.frames = buffer.readUInt16LE(24);
+    this.firstFrame = buffer.readUInt16LE(26);
+    this.bumbmapScale = buffer.readFloatLE(48);
+    this.mipmapCount = buffer.readUInt8(56);
+    this.lowResImageWidth = buffer.readUInt8(61);
+    this.lowResImageHeight = buffer.readUInt8(62);
+
+    this.highResImageFormat = null;
+    let formatId = buffer.readUInt32LE(52);
+    for (let key in VTF.Formats) {
+      const format = VTF.Formats[key];
+      if (format.value == formatId) {
+        this.highResImageFormat = format;
+        break;
+      }
+    }
+    if (!this.highResImageFormat) {
+      throw new Error(`High resolution image format with id: ${formatId} is not supported.`);
+    }
+
+    let lowResImageFormatId = buffer.readUInt32LE(57);
+    for (let key in VTF.Formats) {
+      const format = VTF.Formats[key];
+      if (format.value == lowResImageFormatId) {
+        this.lowResImageFormat = format;
+        break;
+      }
+    }
+
+    if (!this.lowResImageFormat) {
+      throw new Error(`Low resolution image format with id: ${lowResImageFormatId} is not supported.`);
+    }
+
+    if (!("decode" in this.highResImageFormat)) {
+      throw new Error(`High res image format is not supported for decoding. (${this.highResImageFormat.name})`);
+    }
+
+    //let offset = headerSize + this.lowResImageHeight * this.lowResImageWidth * this.lowResImageFormat.bytesPerPixel;
+    const imageBytes = this.width * this.height * this.highResImageFormat.bytesPerPixel;
+    let offset = buffer.length - imageBytes * this.frames;
+
+    /*
+    for (let i = 1; i < this.mipmapCount; i++) {
+      let mipmapWidth = this.width / (1 << i);
+      let mipmapHeight = this.height / (1 << i);
+      console.log("Mipmap level:", i, mipmapWidth);
+      let mipmapBytes = Math.max(mipmapWidth * mipmapHeight * this.highResImageFormat.bytesPerPixel, 8) * this.frames;
+      offset += mipmapBytes;
+    }
+    */
+
+    const canvas = document.createElement("canvas");
+    canvas.width = this.width;
+    canvas.height = this.height;
+    document.body.append(canvas);
+    canvas.style.display = "none";
+    const ctx = canvas.getContext("2d");
+
+    const out = [];
+    for (let i = 0; i < this.frames; i++) {
+      const rawData = buffer.slice(offset, offset + imageBytes);
+
+      const rgba8888 = this.highResImageFormat.decode({
+        width: this.width,
+        height: this.height,
+        data: rawData
+      });
+      const imageData = ctx.createImageData(this.width, this.height);
+      imageData.data.set(rgba8888);
+      out.push(imageData);
+
+      offset += imageBytes;
+    }
+    canvas.remove();
+    return out;
+  }
 }
 
 VTF.Flags = {
@@ -210,6 +306,8 @@ VTF.Flags = {
 VTF.Formats = {
   RGB888: {
     value: 2,
+    bytesPerPixel: 3,
+    name: "RGB888",
     encode(imageData) {
       let pixels = imageData.data;
       let buffer = Buffer.alloc(pixels.length * (3 / 4));
@@ -220,18 +318,37 @@ VTF.Formats = {
       }
       return buffer;
     },
+    decode(compressedData) {
+      let raw = compressedData.data;
+      let pixels = Buffer.alloc(compressedData.width * compressedData.height * 4);
+      for (let i = 0; i < raw.length / 3; i++) {
+        pixels[i * 4] = raw[i * 3];
+        pixels[i * 4 + 1] = raw[i * 3 + 1];
+        pixels[i * 4 + 2] = raw[i * 3 + 2];
+        pixels[i * 4 + 3] = 255;
+      }
+      return pixels;
+    },
     flags: 0
   },
   RGBA8888: {
     value: 0,
+    bytesPerPixel: 3,
+    name: "RGBA8888",
     encode(imageData) {
       let pixels = imageData.data;
+      return Buffer.from(pixels);
+    },
+    decode(compressedData) {
+      let pixels = compressedData.data;
       return Buffer.from(pixels);
     },
     flags: VTF.Flags.EightBitAlpha
   },
   RGB565: {
     value: 4,
+    bytesPerPixel: 2,
+    name: "RGB565",
     encode(imageData) {
       let pixels = imageData.data;
       let buffer = Buffer.alloc(pixels.length / 2);
@@ -254,6 +371,8 @@ VTF.Formats = {
   },
   BGRA5551: {
     value: 21,
+    bytesPerPixel: 2,
+    name: "BGRA5551",
     encode(imageData) {
       let pixels = imageData.data;
       let buffer = Buffer.alloc(pixels.length / 2);
@@ -278,27 +397,43 @@ VTF.Formats = {
   },
   DXT1: {
     value: 13,
+    bytesPerPixel: 0.5,
+    name: "DXT1",
     encode(imageData) {
       return DXTN.compressDXT1(imageData.width, imageData.height, imageData.data);
+    },
+    decode(imageData) {
+      return DXTN.decompressDXT1(imageData.width, imageData.height, imageData.data);
     },
     flags: 0
   },
   DXT3: {
     value: 14,
+    bytesPerPixel: 1,
+    name: "DXT3",
     encode(imageData) {
       return DXTN.compressDXT3(imageData.width, imageData.height, imageData.data);
+    },
+    decode(imageData) {
+      return DXTN.decompressDXT3(imageData.width, imageData.height, imageData.data);
     },
     flags: 0
   },
   DXT5: {
     value: 15,
+    bytesPerPixel: 1,
+    name: "DXT5",
     encode(imageData) {
       return DXTN.compressDXT5(imageData.width, imageData.height, imageData.data);
+    },
+    decode(imageData) {
+      return DXTN.decompressDXT5(imageData.width, imageData.height, imageData.data);
     },
     flags: 0
   },
   none: {
     value: 0xFFFFFFFF,
+    bytesPerPixel: 0,
     encode() {
       return Buffer.alloc(0);
     }

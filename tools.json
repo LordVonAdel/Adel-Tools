@@ -25,9 +25,14 @@
     "icon": "fas fa-desktop"
   },
   "vtf": {
-    "name": "VTF Converter",
+    "name": "Image to VTF Converter",
     "description": "Convert image files to VTF.",
     "icon": "fas fa-images"
+  },
+  "vtf2img": {
+    "name": "VTF Inspector",
+    "description": "Extract images from a VTF file.",
+    "icon": "fas fa-chess-board"
   },
   "vmt": {
     "name": "VMT Editor",

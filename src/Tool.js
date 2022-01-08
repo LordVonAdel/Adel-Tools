@@ -10,6 +10,12 @@ class Tool {
       text: this.toolData.name
     });
 
+    this.addTag("div", {
+      text: this.toolData.description,
+    });
+
+    this.addTag("hr");
+
     this.errorPanel = this.addTag("div", {
       classes: ["error", "hidden"]
     });
@@ -316,9 +322,15 @@ class Tool {
     downloadButton.innerHTML = `<i class="fas fa-download"></i>`;
     
     div.addEventListener("click", () => {
-      const url = URL.createObjectURL(new Blob([data], {
-        type: options.mime || "application/octet-stream"
-      }));
+      
+      let url;
+      if (typeof data == "string") {
+        url = data;
+      } else {
+        url = URL.createObjectURL(new Blob([data], {
+          type: options.mime || "application/octet-stream"
+        }));
+      }
       
       const a = document.createElement("a");
       a.href = url;
