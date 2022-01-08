@@ -91,6 +91,36 @@ label {
   display: block;
 }
 
+.label-tooltip {
+  margin-left: 0.4rem;
+  background: #fff2;
+  height: 1em;
+  width: 1em;
+  display: inline-block;
+  text-align: center;
+  border-radius: 3px;
+}
+
+.label-tooltip:hover {
+  background: #fff8;
+}
+
+.label-tooltip:hover .tooltip-text {
+  display: block;
+}
+
+.tooltip-text {
+  position: absolute;
+  bottom: 100%;
+  display: none;
+  color: #fff;
+  background: var(--input-back);
+  border-radius: 3px;
+  padding: 0.5em;
+  z-index: 1;
+  border: 1px solid var(--secondary);
+}
+
 select, input {
   display: block;
   width: 100%;

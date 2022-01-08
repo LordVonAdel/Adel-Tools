@@ -97,6 +97,19 @@ class Tool {
       }
     }
 
+    if ("tooltip" in options) {
+      input.setAttribute("title", options.tooltip);
+      const labelQuestion = document.createElement("span");
+      labelQuestion.classList.add("label-tooltip");
+      labelQuestion.innerText = "?";
+      label.appendChild(labelQuestion);
+      
+      const tooltip = document.createElement("div");
+      tooltip.classList.add("tooltip-text");
+      tooltip.innerText = options.tooltip;
+      labelQuestion.appendChild(tooltip);
+    }
+
     this.dom.appendChild(div);
     return input;
   }
